@@ -1,0 +1,37 @@
+name: Build DiscordWear
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 17
+
+      - name: Generate Gradle wrapper
+        run: |
+          gradle wrapper --gradle-version 8.9 --distribution-type bin
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build debug APK
+        run: ./gradlew app:assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: discordwear-debug
+          path: app/build/outputs/apk/debug/*.apk
