@@ -15,7 +15,7 @@ data class DiscordUser(
     val displayName: String get() = globalName ?: username
     fun avatarUrl(size: Int = 64): String =
         if (avatarHash != null)
-            "https://cdn.discordapp.com/avatars/$id/$avatarHash.png?size=$size"
+            "https://cdn.discordapp.com/avatars/$id/$avatarHash.png?size=$size"//PFP not working...
         else
             "https://cdn.discordapp.com/embed/avatars/${(id.toLongOrNull() ?: 0L) % 5}.png"
 
@@ -39,7 +39,7 @@ data class Guild(
 ) {
     fun iconUrl(size: Int = 64): String =
         if (iconHash != null)
-            "https://cdn.discordapp.com/icons/$id/$iconHash.png?size=$size"
+            "https://cdn.discordapp.com/icons/$id/$iconHash.png?size=$size"//lets make the server icon the server icon or banner?
         else
             "https://cdn.discordapp.com/embed/avatars/0.png"
 
