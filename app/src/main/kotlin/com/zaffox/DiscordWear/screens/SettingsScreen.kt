@@ -20,8 +20,7 @@ import androidx.wear.input.wearableExtender
 fun SettingsScreen() {
     val context   = LocalContext.current
     val listState = rememberScalingLazyListState()
-    var checked by remember { mutableStateOf(true) }
-  
+    
 
     ScreenScaffold(scrollState = listState) {
         ScalingLazyColumn(state = listState) {
