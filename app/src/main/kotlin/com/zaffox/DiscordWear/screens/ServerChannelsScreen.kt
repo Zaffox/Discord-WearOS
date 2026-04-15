@@ -67,10 +67,10 @@ fun ServerChannels(
                                     text  = "▸ ${group.category.name.uppercase()}",
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         fontWeight = FontWeight.Bold,
-                                        textAlign = TextAlign.Center,
                                         fontSize = 10.sp,
                                         letterSpacing = 1.sp
                                     ),
+                                    textAlign = TextAlign.Center,
                                     color    = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier
                                         .fillMaxWidth()
