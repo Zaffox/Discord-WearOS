@@ -64,7 +64,7 @@ class DiscordRepository(token: String) {
     // ── Refresh helpers ───────────────────────────────────────────────────────
 
     suspend fun refreshCurrentUser() {
-        rest.getCurrentUser().onSuccess { _currentUser.value = it }
+        rest.getCurrentUser().onSuccess { _currentUser.value = it } // if 401 then check token
     }
 
     suspend fun refreshGuilds() {
@@ -76,7 +76,7 @@ class DiscordRepository(token: String) {
     }
 
     /** Fetch messages for a channel and cache them. */
-    suspend fun loadMessages(channelId: String) {
+    suspend fun loadMessages(channelId: String) {//if 401, probably staff only channel, ill keep that, but probably hidden in a dev menu lol
         rest.getMessages(channelId).onSuccess { newMsgs ->
             _messages.update { current ->
                 current + (channelId to newMsgs.reversed()) // reversed = oldest first
