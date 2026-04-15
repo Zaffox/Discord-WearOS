@@ -16,6 +16,7 @@ import com.zaffox.discordwear.discordApp
 @Composable
 fun HomeScreen(
     onNavigateToDms: () -> Unit,
+    onNavigateToSettings: () -> Unit,
     onNavigateToServers: () -> Unit,
     onNavigateToWelcome: () -> Unit,
     onNavigateToChat: (channelId: String, channelName: String) -> Unit
@@ -82,6 +83,13 @@ fun HomeScreen(
                         modifier = Modifier.padding(top = 6.dp)
                     )
                 }
+            }
+            item {
+                Button(
+                    modifier = Modifier,
+                    onClick  = onNavigateToSettings,
+                    colors   = ButtonDefaults.filledTonalButtonColors()
+                ) { Text("Settings") }//set to gear icon later
             }
         }
     }
