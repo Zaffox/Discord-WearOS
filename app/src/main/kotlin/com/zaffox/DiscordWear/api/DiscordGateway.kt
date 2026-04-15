@@ -70,7 +70,7 @@ class DiscordGateway(private val token: String) {
     // ── Connect / Disconnect ──────────────────────────────────────────────────
 
     fun connect() {
-        val url = resumeUrl ?: "wss://gateway.discord.gg/?v=10&encoding=json" //,gg? 
+        val url = resumeUrl ?: "wss://gateway.discord.gg/?v=10&encoding=json"//discord wss API 
         val request = Request.Builder().url(url).build()
         ws = http.newWebSocket(request, Listener())
     }
@@ -78,7 +78,7 @@ class DiscordGateway(private val token: String) {
     fun disconnect() {
         connected = false
         heartbeatJob?.cancel()
-        ws?.close(1000, "Goodbye") //uh
+        ws?.close(1000, "Goodbye") //Goodbye for human readable
         ws = null
     }
 
@@ -102,7 +102,7 @@ class DiscordGateway(private val token: String) {
             .put("intents", INTENTS)
             .put("properties", JSONObject()
                 .put("\$os", "android")
-                .put("\$browser", "discord_wear")//device identifier?
+                .put("\$browser", "discord_wear")//device identifier? -cant find it in my device list
                 .put("\$device", "wearos"))
         send(Op.IDENTIFY, d)
     }
@@ -165,7 +165,7 @@ class DiscordGateway(private val token: String) {
             heartbeatJob?.cancel()
             scope.launch {
                 delay(5_000)
-                connect()
+                connect()//need to add check for http error 401 for valid token
             }
         }
 
@@ -180,7 +180,7 @@ class DiscordGateway(private val token: String) {
     private fun startHeartbeat(intervalMs: Long) {
         heartbeatJob?.cancel()
         heartbeatJob = scope.launch {
-            delay((intervalMs * Math.random()).toLong()) // jitter on first beat
+            delay((intervalMs * Math.random()).toLong()) // jitter on first beat - why?
             while (isActive) {
                 sendHeartbeat()
                 delay(intervalMs)
