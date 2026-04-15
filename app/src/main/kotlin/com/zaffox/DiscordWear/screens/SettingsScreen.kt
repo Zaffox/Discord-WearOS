@@ -33,24 +33,7 @@ fun SettingsScreen() {
                     modifier  = Modifier.fillMaxWidth()
                 )
             }
-            item {
-                SwitchButton(
-                    modifier = modifier.fillMaxWidth(),
-                    label = {
-                        Text(
-                            "Dummy toggle",
-                             maxLines = 1,
-                             overflow = TextOverflow.Ellipsis,
-                             modifier = Modifier.semantics {
-                                  this.contentDescription = if (checked) "On" else "Off"
-                             },
-                        )
-                    },
-                checked = checked,
-                onCheckedChange = { checked = it },
-                enabled = true,
-                )
-            }
+            
         }
     }
 }
