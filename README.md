@@ -1,4 +1,4 @@
-This is just the current UI, it may change in the future, this is just a test UI.
+this is pure vibecode shit, just here to try and see what to do, if you cant understand, dont waste your time trying to debug, Claude just wanted to do it  :P
 # Discord-wear
 Discord For WearOS
 ### 3RD PARTY CLIENTS VIOLATE DISCORDS TERMS OF SERVICE
