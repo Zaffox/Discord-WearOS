@@ -30,7 +30,10 @@ class MainActivity : ComponentActivity() {
                         HomeScreen(
                             onNavigateToDms     = { navController.navigate("DMs") },
                             onNavigateToServers = { navController.navigate("servers") },
-                            onNavigateToWelcome = { navController.navigate("Welcome") }
+                            onNavigateToWelcome = { navController.navigate("Welcome") },
+                            onNavigateToChat    = { chId, chName ->
+                                navController.navigate("chatscreen/$chId/$chName")
+                            }
                         )
                     }
                     composable("Welcome") {
