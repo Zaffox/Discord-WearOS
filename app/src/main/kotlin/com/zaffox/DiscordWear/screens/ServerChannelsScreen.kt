@@ -11,7 +11,7 @@ import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.*
 import com.zaffox.discordwear.api.CategoryGroup
-import com.zaffox.discordwear.discordApp
+import com.zaffox.discordwear.*
 import kotlinx.coroutines.launch
 
 @Composable
