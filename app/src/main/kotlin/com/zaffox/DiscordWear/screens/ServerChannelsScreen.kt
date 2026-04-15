@@ -70,7 +70,6 @@ fun ServerChannels(
                                         fontSize = 10.sp,
                                         letterSpacing = 1.sp
                                     ),
-                                    textAlign = TextAlign.Center,
                                     color    = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier
                                         .fillMaxWidth()
