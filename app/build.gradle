@@ -48,4 +48,5 @@ dependencies {
     implementation libs.wear.compose.navigation
     implementation libs.kotlinx.coroutines
     implementation libs.wear.input
+    implementation libs.okhttp
 }
