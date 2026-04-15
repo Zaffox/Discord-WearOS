@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-                    composable("Settings") {
+                    composable("settings") {
                         SettingsScreen()
                     }
                     composable("DMs") {
