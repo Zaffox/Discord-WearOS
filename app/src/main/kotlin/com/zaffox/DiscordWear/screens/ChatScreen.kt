@@ -96,6 +96,30 @@ fun ChatScreen(onNavigateToChatScreen: () -> Unit = {}) {
                     Text("Message 'Channel Name'")
                 }
             }
+            item {
+                Column(
+    modifier = Modifier.fillMaxSize(),
+    verticalArrangement = Arrangement.spacedBy(8.dp),
+    horizontalAlignment = Alignment.CenterHorizontally
+) {
+                Button(
+                    onClick = { openInput() },
+                    modifier = Modifier
+                        .height(30.dp), //yeah, thats not going to cause compatibility issues with text size /s
+                    colors = ButtonDefaults.filledTonalButtonColors()
+                ) {
+                    Text("Em")
+                }
+                Button(
+                    onClick = { openInput() },
+                    modifier = Modifier
+                        .height(30.dp), //yeah, thats not going to cause compatibility issues with text size /s
+                    colors = ButtonDefaults.filledTonalButtonColors()
+                ) {
+                    Text("St")
+                }
+                }
+            }
         }
     }
 }
