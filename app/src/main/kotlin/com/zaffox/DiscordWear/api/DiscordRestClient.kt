@@ -39,8 +39,8 @@ class DiscordRestClient(private val token: String) {
     private fun buildRequest(path: String): Request.Builder =
         Request.Builder()
             .url("$baseUrl$path")
-            .header("Authorization", token)           // token already has "Bot " prefix if bot
-            .header("User-Agent", "DiscordWear/1.0 (WearOS)")
+            .header("Authorization", token)           // token already has "Bot " prefix if bot - Check for bot maybe?
+            .header("User-Agent", "DiscordWear/1.0 (WearOS)")//Add device info here, EX: Galaxy Watch7 40MM - help ID device
 
     /** Execute a request and return the body as a string, or throw on HTTP error. */
     private suspend fun execute(request: Request): String = withContext(Dispatchers.IO) {
@@ -91,6 +91,7 @@ class DiscordRestClient(private val token: String) {
      * Returns up to [limit] messages (max 100), newest first.
      * The UI should reverse the list to show oldest-at-top.
      */
+     //lets try to get the unread messages and start from there unless mor than ~20, but add quick scroll down- not here, in UI screen kotlin
     suspend fun getMessages(channelId: String, limit: Int = 50): Result<List<DiscordMessage>> = runCatching {
         val safe = limit.coerceIn(1, 100)
         DiscordMessage.listFromJson(JSONArray(get("/channels/$channelId/messages?limit=$safe")))
