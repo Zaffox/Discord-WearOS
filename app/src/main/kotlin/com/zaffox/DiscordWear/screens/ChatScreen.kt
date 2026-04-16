@@ -71,7 +71,7 @@ fun ChatScreen(
     var loading      by remember { mutableStateOf(messages.isEmpty()) }
     var sendError    by remember { mutableStateOf("") }
     var showPicker   by remember { mutableStateOf(false) }
-    var emojiSticker      by remember { mutableStateOf(0) } // 0 = emoji, 1 = stickers
+    var tab      by remember { mutableStateOf(0) } // 0 = emoji, 1 = stickers
 
     // Name lookup maps for mention rendering
     val currentUser by repo.currentUser.collectAsState()
@@ -114,7 +114,7 @@ fun ChatScreen(
     // ── Emoji/sticker picker overlay ──────────────────────────────────────────
     if (showPicker) {
         EmojiStickerScreen(
-            emojiSticker = emojiSticker
+            tab = tab,
             guildId = guildId,
             onEmojiPicked = { insertText ->
                 showPicker = false
@@ -179,7 +179,7 @@ fun ChatScreen(
                     FilledIconButton(
                         onClick  = {
                             showPicker = true
-                            emojiSticker = 0
+                            tab = 0
                         },
                         modifier = Modifier.height(40.dp),
                         //colors   = IconButtonDefaults.filledTonalButtonColors()
@@ -192,7 +192,7 @@ fun ChatScreen(
                     FilledIconButton(
                         onClick  = {
                             showPicker = true,
-                            emojiSticker = 1
+                            tab = 1
                         },
                         modifier = Modifier.height(40.dp),
                         //colors   = IconButtonDefaults.filledTonalButtonColors()
