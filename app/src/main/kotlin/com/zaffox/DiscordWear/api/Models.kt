@@ -10,8 +10,11 @@ data class DiscordUser(
     val username: String,
     val discriminator: String,
     val globalName: String?,
-    val avatarHash: String?
+    val avatarHash: String?,
+    /** 0 = none, 1 = Nitro Classic, 2 = Nitro, 3 = Nitro Basic */
+    val premiumType: Int = 0
 ) {
+    val hasNitro: Boolean get() = premiumType > 0
     val displayName: String get() = globalName ?: username
     fun avatarUrl(size: Int = 64): String =
         if (avatarHash != null)
@@ -25,7 +28,8 @@ data class DiscordUser(
             username      = o.getString("username"),
             discriminator = o.optString("discriminator", "0"),
             globalName    = o.optString("global_name").takeIf { it.isNotEmpty() },
-            avatarHash    = o.optString("avatar").takeIf { it.isNotEmpty() }
+            avatarHash    = o.optString("avatar").takeIf { it.isNotEmpty() },
+            premiumType   = o.optInt("premium_type", 0)
         )
     }
 }
@@ -332,11 +336,13 @@ data class StickerItem(
 ) {
     /** CDN URL — Lottie stickers use a JSON url, everything else is an image */
     val imageUrl: String get() = when (formatType) {
-        3    -> "https://discord.com/stickers/$id.json"   // Lottie — can't display natively
-        4    -> "https://media.discordapp.net/stickers/$id.gif"
-        else -> "https://media.discordapp.net/stickers/$id.png"
+        2    -> "https://cdn.discordapp.com/stickers/$id.png"   // APNG
+        3    -> "https://cdn.discordapp.com/stickers/$id.json"  // Lottie — can't display natively
+        4    -> "https://cdn.discordapp.com/stickers/$id.gif"   // GIF (Nitro)
+        else -> "https://cdn.discordapp.com/stickers/$id.png"   // PNG (default)
     }
     val isDisplayable: Boolean get() = formatType != 3  // skip Lottie
+    val isAnimated: Boolean get() = formatType == 2 || formatType == 4  // APNG or GIF
 
     companion object {
         fun fromJson(o: JSONObject) = StickerItem(
@@ -506,6 +512,8 @@ data class DiscordMessage(
     val embeds: List<Embed> = emptyList(),
     val stickers: List<StickerItem> = emptyList(),
     val reactions: List<Reaction> = emptyList(),
+    /** Full user objects from mentions array — used for name resolution */
+    val mentionedUsers: List<DiscordUser> = emptyList(),
     /** Users mentioned in this message */
     val mentionedUserIds: List<String> = emptyList(),
     /** Role IDs mentioned */
@@ -513,7 +521,14 @@ data class DiscordMessage(
     /** True if @everyone or @here was used */
     val mentionEveryone: Boolean = false,
     /** Guild/server name hint (populated when storing as a ping) */
-    val guildId: String? = null
+    val guildId: String? = null,
+    /** Message type: 0=default, 19=reply, 23=forward */
+    val type: Int = 0,
+    /** The message being replied to (type=19) */
+    val referencedMessage: DiscordMessage? = null,
+    /** Forwarded message snapshot content (type=23) */
+    val forwardedContent: String? = null,
+    val forwardedAuthor: DiscordUser? = null
 ) {
     /** Returns true if [userId] is directly pinged, or @everyone/@here was used */
     fun pingFor(userId: String, memberRoleIds: List<String> = emptyList()): Boolean =
@@ -524,9 +539,11 @@ data class DiscordMessage(
     companion object {
         fun fromJson(o: JSONObject): DiscordMessage {
             val mentionsArr = o.optJSONArray("mentions")
+            // Parse full user objects for name resolution
             val mentionedUsers = if (mentionsArr != null)
-                (0 until mentionsArr.length()).map { mentionsArr.getJSONObject(it).getString("id") }
-            else emptyList()
+                (0 until mentionsArr.length()).map { DiscordUser.fromJson(mentionsArr.getJSONObject(it)) }
+            else emptyList<DiscordUser>()
+            val mentionedUserIds = mentionedUsers.map { it.id }
 
             val roleArr = o.optJSONArray("mention_roles")
             val mentionedRoles = if (roleArr != null)
@@ -562,21 +579,47 @@ data class DiscordMessage(
                 }
             else emptyList()
 
+            // Reply support
+            val refMsgObj = o.optJSONObject("referenced_message")
+            val refMsg = if (refMsgObj != null) runCatching { fromJson(refMsgObj) }.getOrNull() else null
+
+            // Forward support (type=23, message_snapshots array)
+            val msgType = o.optInt("type", 0)
+            var fwdContent: String? = null
+            var fwdAuthor: DiscordUser? = null
+            if (msgType == 23) {
+                val snapshots = o.optJSONArray("message_snapshots")
+                if (snapshots != null && snapshots.length() > 0) {
+                    runCatching {
+                        val snap = snapshots.getJSONObject(0).optJSONObject("message")
+                        if (snap != null) {
+                            fwdContent = snap.optString("content").takeIf { it.isNotEmpty() }
+                            fwdAuthor  = snap.optJSONObject("author")?.let { DiscordUser.fromJson(it) }
+                        }
+                    }
+                }
+            }
+
             return DiscordMessage(
-                id               = o.getString("id"),
-                channelId        = o.getString("channel_id"),
-                author           = DiscordUser.fromJson(o.getJSONObject("author")),
-                content          = o.getString("content"),
-                timestamp        = o.getString("timestamp"),
-                editedTimestamp  = o.optString("edited_timestamp").takeIf { it.isNotEmpty() },
-                attachments      = attachments,
-                embeds           = embeds,
-                stickers         = stickers,
-                reactions        = reactions,
-                mentionedUserIds = mentionedUsers,
-                mentionedRoleIds = mentionedRoles,
-                mentionEveryone  = o.optBoolean("mention_everyone", false),
-                guildId          = o.optString("guild_id").takeIf { it.isNotEmpty() }
+                id                = o.getString("id"),
+                channelId         = o.getString("channel_id"),
+                author            = DiscordUser.fromJson(o.getJSONObject("author")),
+                content           = o.getString("content"),
+                timestamp         = o.getString("timestamp"),
+                editedTimestamp   = o.optString("edited_timestamp").takeIf { it.isNotEmpty() },
+                attachments       = attachments,
+                embeds            = embeds,
+                stickers          = stickers,
+                reactions         = reactions,
+                mentionedUsers    = mentionedUsers,
+                mentionedUserIds  = mentionedUserIds,
+                mentionedRoleIds  = mentionedRoles,
+                mentionEveryone   = o.optBoolean("mention_everyone", false),
+                guildId           = o.optString("guild_id").takeIf { it.isNotEmpty() },
+                type              = msgType,
+                referencedMessage = refMsg,
+                forwardedContent  = fwdContent,
+                forwardedAuthor   = fwdAuthor
             )
         }
 

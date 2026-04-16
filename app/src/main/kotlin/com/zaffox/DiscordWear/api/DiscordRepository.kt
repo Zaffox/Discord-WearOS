@@ -57,6 +57,9 @@ class DiscordRepository(token: String) {
      */
     private val channelNameCache = mutableMapOf<String, String>()
 
+    /** Snapshot of the channel name cache for mention rendering. */
+    fun getChannelNames(): Map<String, String> = channelNameCache.toMap()
+
     /**
      * Guild ID cache from message events: channelId → guildId
      * (the gateway MESSAGE_CREATE payload includes guild_id)
