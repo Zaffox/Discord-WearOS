@@ -31,8 +31,8 @@ import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import coil.request.ImageRequest
 import android.content.Context
+import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.wear.compose.material3.Surface
 import com.zaffox.discordwear.api.*
 import com.zaffox.discordwear.discordApp
 import kotlinx.coroutines.launch
@@ -319,16 +319,17 @@ private fun ReactionChip(reaction: Reaction, imageLoader: ImageLoader, onClick: 
     val bgColor = if (reaction.me)
         MaterialTheme.colorScheme.primaryContainer
     else
-        MaterialTheme.colorScheme.surfaceVariant
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
 
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.height(22.dp),
-        shape    = RoundedCornerShape(11.dp),
-        color    = bgColor
+    Box(
+        modifier = Modifier
+            .height(22.dp)
+            .background(color = bgColor, shape = RoundedCornerShape(11.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
@@ -345,8 +346,8 @@ private fun ReactionChip(reaction: Reaction, imageLoader: ImageLoader, onClick: 
                 Text(reaction.emoji.name, fontSize = 12.sp)
             }
             Text(
-                text  = reaction.count.toString(),
-                style = MaterialTheme.typography.labelSmall,
+                text     = reaction.count.toString(),
+                style    = MaterialTheme.typography.labelSmall,
                 fontSize = 10.sp
             )
         }
