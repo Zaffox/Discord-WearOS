@@ -36,6 +36,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import com.zaffox.discordwear.api.*
 import com.zaffox.discordwear.discordApp
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 
 private const val INPUT_KEY = "message_input"
 
@@ -174,10 +176,10 @@ fun ChatScreen(
                     IconButton(
                         onClick  = { showPicker = true },
                         modifier = Modifier.height(36.dp),
-                        colors   = ButtonDefaults.filledTonalButtonColors()
+                        colors   = IconButtonDefaults.filledTonalButtonColors()
                     ) {
                         Icon(
-                            imageVector = Icons.Icon.Sentiment_satisfied,
+                            painter = painterResource(id = R.drawable.emoji),
                             contentDescription = "Emoji" 
                         )
                     }//add emoji material icon
@@ -186,10 +188,10 @@ fun ChatScreen(
                     IconButton(
                         onClick  = { showPicker = true },
                         modifier = Modifier.height(36.dp),
-                        colors   = ButtonDefaults.filledTonalButtonColors()
+                        colors   = IconButtonDefaults.filledTonalButtonColors()
                     ) { 
                         Icon(
-                            imageVector = Icons.Rounded.Sticker,
+                            painter = painterResource(id = R.drawable.sticker),
                             contentDescription = "Stickers" 
                         )
                     } //add sticker material icon
@@ -417,6 +419,6 @@ private fun DiscordAvatar(url: String, imageLoader: ImageLoader, size: Dp) {
         imageLoader = imageLoader,
         contentDescription = null,
         contentScale = ContentScale.Crop,
-        modifier = Modifier.size(size).clip(CircleShape) //make avatar circle
+        modifier = Modifier.size(size)//.clip(CircleShape) //make avatar circle
     )
 }
