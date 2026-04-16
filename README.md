@@ -1,16 +1,3 @@
-_this is pure vibecode shit, just here to try and see what to do, if you cant understand, dont waste your time trying to debug, Claude just wanted to do it  :P
-
-better than chat gpt i guess,  at least it is a competent AI, but "just upload the project so i can understand better" - proceeds to recode and rezip and give it back...
-
-sigh...
-
-Update: it Actually works?!
-but it lists all channels in a discord server no matter the perms
-
-lmao
-
-Ok, the code is not too bad, it is just the API that was vibecoded so... be careful, dont use your main account,
-if you do change your password because of a 'token leak' yeah totaly a leak and not me f***ing with the API lol /s
 
 # Discord-wear
 Discord For WearOS
@@ -19,12 +6,20 @@ Discord For WearOS
 
 Note:there are very few reports of actual bans for 3rd party cilents alone.
 
-What should work:
-- messages
-- images
-- embeds
-- emoji
-- stickers
+Add localhost website for token input on device on same LAN
+192.168.1.123:1234 and it shows a basic webite so you dont have to type on a small screen, todo
+
+Currently working:
+- Messages
+- Embeds
+- Server Stickers and Emoji
+- Profile Images
+- Replys (cant reply yet)
+
+Not Working
+- Fowarded messages
+- bot commands
+
 
 what will Never work
 - voice calls (E2E Requirement)
