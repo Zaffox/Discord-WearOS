@@ -171,18 +171,18 @@ fun ChatScreen(
                     colors   = ButtonDefaults.filledTonalButtonColors()
                 ) { Text("Message #$channelName") }
             }
-            item {
+            item {//!
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly // Distributes space between buttons 
                 ) {
-                    IconButton(
+                    IconButton(//!
                         onClick  = { showPicker = true },
                         modifier = Modifier.height(36.dp),
                         //colors   = IconButtonDefaults.filledTonalButtonColors()
-                    ) {
+                    ) {//!
                         Icon(
-                            painter = painterResource(id = R.drawable.emoji),
+                            painter = painterResource(id = R.drawable.emoji),//!
                             contentDescription = "Emoji" 
                         )
                     }//add emoji material icon
