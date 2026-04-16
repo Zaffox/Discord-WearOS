@@ -176,7 +176,7 @@ fun ChatScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly // Distributes space between buttons 
                 ) {
-                    FilledIconButton(
+                    IconButton(
                         onClick  = { showPicker = true },
                         modifier = Modifier.height(36.dp),
                         //colors   = IconButtonDefaults.filledTonalButtonColors()
@@ -186,7 +186,7 @@ fun ChatScreen(
                             contentDescription = "Emoji" 
                         )
                     }//add emoji material icon
-                    FilledIconButton(
+                    IconButton(
                         onClick  = { showPicker = true },
                         modifier = Modifier.height(36.dp),
                         //colors   = IconButtonDefaults.filledTonalButtonColors()
