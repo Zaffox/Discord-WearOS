@@ -100,7 +100,7 @@ fun EmojiStickerScreen(
                     items(rows.size) { rowIdx ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp).center
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)//.center
                         ) {
                             rows[rowIdx].forEach { emoji ->
                                 AsyncImage(
@@ -132,7 +132,7 @@ fun EmojiStickerScreen(
                                 //.clickable { onStickerPicked(sticker.id) }
                                 .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp).center
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)//.center
                         ) {
                             rows[rowIdx].forEach { sticker ->
                                 AsyncImage(
