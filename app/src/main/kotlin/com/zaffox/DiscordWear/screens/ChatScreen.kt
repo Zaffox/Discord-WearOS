@@ -171,18 +171,28 @@ fun ChatScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly // Distributes space between buttons 
             ) {
                 item {
-                    Button(
+                    IconButton(
                         onClick  = { showPicker = true },
                         modifier = Modifier.height(36.dp),
                         colors   = ButtonDefaults.filledTonalButtonColors()
-                    ) { Text(":)") }//add emoji material icon
+                    ) {
+                        Icon(
+                            imageVector = Icons.Icon.Sentiment_satisfied,
+                            contentDescription = "Emoji" 
+                        )
+                    }//add emoji material icon
                 }
                 item {
-                    Button(
+                    IconButton(
                         onClick  = { showPicker = true },
                         modifier = Modifier.height(36.dp),
                         colors   = ButtonDefaults.filledTonalButtonColors()
-                    ) { Text("St") } //add sticker material icon
+                    ) { 
+                        Icon(
+                            imageVector = Icons.Rounded.Sticker,
+                            contentDescription = "Stickers" 
+                        )
+                    } //add sticker material icon
                 }
             }
         }
