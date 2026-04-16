@@ -395,6 +395,6 @@ private fun DiscordAvatar(url: String, imageLoader: ImageLoader, size: Dp) {
         imageLoader        = imageLoader,
         contentDescription = null,
         contentScale       = ContentScale.Crop,
-        modifier           = Modifier.size(size)
+        modifier           = Modifier.size(size).clip(CircleShape) //make avatar circle
     )
 }
