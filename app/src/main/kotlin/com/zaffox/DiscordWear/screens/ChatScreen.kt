@@ -171,11 +171,11 @@ fun ChatScreen(
                     colors   = ButtonDefaults.filledTonalButtonColors()
                 ) { Text("Message #$channelName") }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly // Distributes space between buttons 
-            ) {
-                item {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly // Distributes space between buttons 
+                ) {
                     FilledIconButton(
                         onClick  = { showPicker = true },
                         modifier = Modifier.height(36.dp),
@@ -186,8 +186,6 @@ fun ChatScreen(
                             contentDescription = "Emoji" 
                         )
                     }//add emoji material icon
-                }
-                item {
                     FilledIconButton(
                         onClick  = { showPicker = true },
                         modifier = Modifier.height(36.dp),
