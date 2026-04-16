@@ -123,7 +123,7 @@ fun EmojiStickerScreen(
                     item { Text("No stickers.", style = MaterialTheme.typography.bodySmall,
                         textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
                 } else {
-                     val rows = stickers.chunked(2)
+                     val rows = stickers.chunked(3)
                     items(rows.size) { rowIdx ->
                         //val sticker = stickers[idx]
                         Row(
