@@ -100,7 +100,7 @@ fun EmojiStickerScreen(
                     items(rows.size) { rowIdx ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.Center)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp).center
                         ) {
                             rows[rowIdx].forEach { emoji ->
                                 AsyncImage(
@@ -123,25 +123,30 @@ fun EmojiStickerScreen(
                     item { Text("No stickers.", style = MaterialTheme.typography.bodySmall,
                         textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
                 } else {
-                    items(stickers.size) { idx ->
-                        val sticker = stickers[idx]
+                     val rows = stickers.chunked(2)
+                    items(rows.size) { rowIdx ->
+                        //val sticker = stickers[idx]
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onStickerPicked(sticker.id) }
+                                //.clickable { onStickerPicked(sticker.id) }
                                 .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp).center
                         ) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(context)
-                                    .data(sticker.imageUrl).crossfade(true).build(),
-                                imageLoader        = imageLoader,
-                                contentDescription = sticker.name,
-                                contentScale       = ContentScale.Fit,
-                                modifier           = Modifier.size(48.dp)
-                            )
-                            Text(sticker.name, style = MaterialTheme.typography.bodySmall)
+                            rows[rowIdx].forEach { sticker ->
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context)
+                                        .data(sticker.imageUrl).crossfade(true).build(),
+                                    imageLoader        = imageLoader,
+                                    contentDescription = sticker.name,
+                                    contentScale       = ContentScale.Fit,
+                                    modifier           = Modifier
+                                        .size(48.dp)
+                                        .clickable { onStickerPicked(sticker.id) }
+                                )
+                                //Text(sticker.name, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
                 }
