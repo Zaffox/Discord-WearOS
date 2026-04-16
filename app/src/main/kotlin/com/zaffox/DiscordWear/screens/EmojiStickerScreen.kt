@@ -61,7 +61,7 @@ fun EmojiStickerScreen(
     var emojis   by remember { mutableStateOf<List<GuildEmoji>>(emptyList()) }
     var stickers by remember { mutableStateOf<List<StickerItem>>(emptyList()) }
     var loading  by remember { mutableStateOf(true) }
-    var tab      by remember { mutableStateOf(0) } // 0 = emoji, 1 = stickers
+    //var tab      by remember { mutableStateOf(0) } // 0 = emoji, 1 = stickers
 
     LaunchedEffect(guildId) {
         if (guildId != null) {
