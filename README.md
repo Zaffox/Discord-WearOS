@@ -45,3 +45,7 @@ what will Never work
 - voice calls (E2E Requirement)
 - Joining server (Captha)
 _
+
+
+Please check this page for updates often to get nwe features and bug fixes
+(Auto update check comming soon)
