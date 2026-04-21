@@ -23,7 +23,7 @@ Localhost website for token input on device on same LAN
 
 Known Bugs:
 - Channels user does not access too stil appear
-
+- Samsung keyboard does not work, Use Gboard instead, Samsung keyboard is bugged
 
 Currently working:
 - Messages
