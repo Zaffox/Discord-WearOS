@@ -15,6 +15,7 @@
     <application
         android:name=".DiscordWearApp"
         android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher_round"
         android:theme="@android:style/Theme.DeviceDefault"
         android:supportsRtl="true">
 
