@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
 private const val INPUT_KEY = "token_input"
 
 @Composable
-fun WelcomeScreen(onSetupComplete: () -> Unit) {
+fun WelcomeScreen(onSetupComplete: () -> Unit, onNavigateToQrLogin: () -> Unit) {
     val context = LocalContext.current
     val listState = rememberScalingLazyListState()
     val scope = rememberCoroutineScope()
@@ -159,6 +159,13 @@ fun WelcomeScreen(onSetupComplete: () -> Unit) {
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
                 )
+            }
+
+            item {
+                Button(
+                    onClick = { onNavigateToQrLogin() },
+                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                ) { Text("Scan QR Code") }
             }
 
             item {

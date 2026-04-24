@@ -1,6 +1,7 @@
 package com.zaffox.discordwear.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -23,8 +24,11 @@ fun SettingsScreen(
     val listState = rememberScalingLazyListState()
     val scope     = rememberCoroutineScope()
     val repo      = context.discordApp.repository
-    var downloading by remember { mutableStateOf(false) }
-     var downloadError by remember { mutableStateOf("") }
+    var downloading    by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableStateOf(0f) }
+    var downloadError  by remember { mutableStateOf("") }
+
+
     var hideInaccessible by remember {
         mutableStateOf(SetupPreferences.getHideInaccessibleChannels(context))
     }
@@ -264,17 +268,23 @@ fun SettingsScreen(
 
             if (updateState is UpdateChecker.UpdateState.UpdateAvailable) {
                 val release = (updateState as UpdateChecker.UpdateState.UpdateAvailable).release
-
+                
                 if (release.apkUrl != null) {
                     item {
                         Button(
                             onClick = {
                                 if (!downloading) {
                                     downloading = true
+                                    downloadProgress = 0f
                                     downloadError = ""
                                     scope.launch {
-                                        ApkInstaller.downloadAndInstall(context, release.apkUrl)
-                                            .onFailure { downloadError = it.message ?: "Download failed" }
+                                        ApkInstaller.downloadAndInstall(
+                                            context  = context,
+                                            url      = release.apkUrl,
+                                            onProgress = { p ->
+                                                downloadProgress = p
+                                            }
+                                        ).onFailure { downloadError = it.message ?: "Download failed" }
                                         downloading = false
                                     }
                                 }
@@ -289,6 +299,25 @@ fun SettingsScreen(
                             )
                         }
                     }
+
+                    if (downloading) {
+                        item {
+                            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+                                LinearProgressIndicator(
+                                    progress = { downloadProgress },
+                                    modifier = Modifier.fillMaxWidth().height(4.dp)
+                                )
+                                Text(
+                                    text  = "${(downloadProgress * 100).toInt()}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+
                     if (downloadError.isNotEmpty()) {
                         item {
                             Text(
