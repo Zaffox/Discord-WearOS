@@ -1,4 +1,4 @@
-
+# This project is not being worked on because My discord account has been banned, BUT WAS NOT CAUSED BY THIS APP
 # Discord-wear
 Discord For WearOS
 ### 3RD PARTY CLIENTS VIOLATE DISCORDS TERMS OF SERVICE
