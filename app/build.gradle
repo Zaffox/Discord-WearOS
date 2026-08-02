@@ -15,7 +15,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.zaffox.discordwear"
+        applicationId "com.bway.discordwear"
         minSdk 30
         targetSdk 35
         versionCode 7

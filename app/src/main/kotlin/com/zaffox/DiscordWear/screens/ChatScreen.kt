@@ -788,6 +788,18 @@ fun ChatScreen(
                                 contentDescription = "Voice Message"
                             )
                         }
+
+                        FilledIconButton(
+                            onClick = { inputText += "||"; },
+                            modifier = Modifier
+                                .width(40.dp)
+                                .height(40.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.spoiler),
+                                contentDescription = "Text Spoiler"
+                            )
+                        }
                     }
                 } else {
                     Column(
@@ -1264,9 +1276,25 @@ private fun MessageBubble(
             }
 
             msg.attachments.filter { it.isImage }.forEach { att ->
+                MessageContent(
+                    content = att.proxyUrl,
+                    imageLoader = imageLoader,
+                    context = context,
+                    userNames = userNames,
+                    channelNames = channelNames,
+                    spoilerRevealOnTap = spoilerRevealOnTap
+                )
                 MediaImage(att.proxyUrl, att.filename, imageLoader)
             }
             msg.attachments.filter { it.isVideo }.forEach { att ->
+                MessageContent(
+                    content = att.proxyUrl,
+                    imageLoader = imageLoader,
+                    context = context,
+                    userNames = userNames,
+                    channelNames = channelNames,
+                    spoilerRevealOnTap = spoilerRevealOnTap
+                )
                 VideoAttachment(att, imageLoader)
             }
             msg.attachments.filter { it.isAudio }.forEach { att ->
