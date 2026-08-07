@@ -15,7 +15,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.bway.discordwear"
+        applicationId "com.zaffox.discordwear"
         minSdk 30
         targetSdk 35
         versionCode 7
@@ -57,6 +57,7 @@ android {
         release {
             signingConfig signingConfigs.release
             minifyEnabled true
+            shrinkResources true
         }
     }
 }
