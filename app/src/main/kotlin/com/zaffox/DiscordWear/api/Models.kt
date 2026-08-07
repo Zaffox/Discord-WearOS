@@ -466,7 +466,8 @@ object ContentParser {
         val italic: Boolean = false,
         val strikethrough: Boolean = false,
         val code: Boolean = false,
-        val spoiler: Boolean = false
+        val spoiler: Boolean = false,
+        val subtext: Boolean  = false
     )
 
     fun parseMarkdown(text: String): List<MarkdownSpan> {
@@ -478,7 +479,8 @@ object ContentParser {
             """|(~~(.+?)~~)""" +
             """|(```.+?```)|(`(.+?)`)""" +
             """|(\|\|(.+?)\|\|)""" +
-            """|(_{2}(.+?)_{2})""",
+            """|(_{2}(.+?)_{2})""" +
+                    """|(^\-#\s+(.+)$)""",
             setOf(RegexOption.DOT_MATCHES_ALL)
         )
         var cursor = 0
@@ -495,6 +497,7 @@ object ContentParser {
                 raw.startsWith("`") -> spans += MarkdownSpan(match.groupValues[9], code = true)
                 raw.startsWith("||") -> spans += MarkdownSpan(match.groupValues[11], spoiler = true)
                 raw.startsWith("__") -> spans += MarkdownSpan(match.groupValues[13], bold = true)
+                raw.startsWith("-#") -> spans += MarkdownSpan(match.groupValues[15], subtext = true)
                 else -> spans += MarkdownSpan(raw)
             }
             cursor = match.range.last + 1
