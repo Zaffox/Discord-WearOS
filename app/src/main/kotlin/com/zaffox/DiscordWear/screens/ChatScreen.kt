@@ -191,8 +191,7 @@ fun ChatScreen(
 
     fun startRecording() {
         val hasAudio = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.RECORD_AUDIO
+            context, Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
         if (!hasAudio) {
             micPermLauncher.launch(Manifest.permission.RECORD_AUDIO); return
@@ -293,8 +292,8 @@ fun ChatScreen(
                         mime.contains("webp") -> "webp"
                         else -> "jpg"
                     }
-                    val bytes = cr.openInputStream(uri)?.readBytes()
-                        ?: throw Exception("Cannot read image")
+                    val bytes =
+                        cr.openInputStream(uri)?.readBytes() ?: throw Exception("Cannot read image")
                     repo.sendFileAttachment(channelId, bytes, "image.$ext", mime)
                         .onFailure { uploadError = "Upload failed: ${it.message}" }
                 }.onFailure { uploadError = "Error: ${it.message}" }
@@ -588,8 +587,7 @@ fun ChatScreen(
 
                         val isContinuation =
                             prevMsg != null && prevMsg.author.id == msg.author.id && msg.type !in listOf(
-                                19,
-                                23
+                                19, 23
                             ) && prevMsg.type !in listOf(19, 23) && gapMs < 10 * 60 * 1000L
 
                         MessageBubble(
@@ -816,8 +814,7 @@ fun ChatScreen(
                                                 if (android.os.Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES
                                                 else Manifest.permission.READ_EXTERNAL_STORAGE
                                             val hasPerm = ContextCompat.checkSelfPermission(
-                                                context,
-                                                perm
+                                                context, perm
                                             ) == PackageManager.PERMISSION_GRANTED
                                             if (hasPerm) {
                                                 showPhotoPicker = true
@@ -1358,25 +1355,9 @@ private fun MessageBubble(
             }
 
             msg.attachments.filter { it.isImage }.forEach { att ->
-                MessageContent(
-                    content = att.proxyUrl,
-                    imageLoader = imageLoader,
-                    context = context,
-                    userNames = userNames,
-                    channelNames = channelNames,
-                    spoilerRevealOnTap = spoilerRevealOnTap
-                )
                 MediaImage(att.proxyUrl, att.filename, imageLoader)
             }
             msg.attachments.filter { it.isVideo }.forEach { att ->
-                MessageContent(
-                    content = att.proxyUrl,
-                    imageLoader = imageLoader,
-                    context = context,
-                    userNames = userNames,
-                    channelNames = channelNames,
-                    spoilerRevealOnTap = spoilerRevealOnTap
-                )
                 VideoAttachment(att, imageLoader)
             }
             msg.attachments.filter { it.isAudio }.forEach { att ->
@@ -1506,8 +1487,7 @@ private fun MessageContent(
                         modifier = Modifier.clickable {
                             runCatching {
                                 val intent = Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse(part.url)
+                                    Intent.ACTION_VIEW, Uri.parse(part.url)
                                 ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 context.startActivity(intent)
                             }
@@ -1564,6 +1544,7 @@ private fun ReactionChip(reaction: Reaction, imageLoader: ImageLoader, onClick: 
 private fun MediaImage(
     url: String, contentDesc: String, imageLoader: ImageLoader, size: Dp = 120.dp
 ) {
+    val context = LocalContext.current
     AsyncImage(
         model = ImageRequest.Builder(LocalContext.current).data(url).crossfade(true).build(),
         imageLoader = imageLoader,
@@ -1573,7 +1554,14 @@ private fun MediaImage(
             .padding(top = 2.dp)
             .widthIn(max = size)
             .heightIn(max = size)
-    )
+            .clickable {
+                runCatching {
+                    val intent = Intent(
+                        Intent.ACTION_VIEW, Uri.parse(url)
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                }
+            })
 }
 
 @Composable
@@ -1630,8 +1618,7 @@ private fun EmbedCard(embed: Embed, imageLoader: ImageLoader) {
     val imgUrl = embed.displayImageUrl
     if (imgUrl != null) {
         AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current).data(imgUrl).crossfade(true)
-                .build(),
+            model = ImageRequest.Builder(LocalContext.current).data(imgUrl).crossfade(true).build(),
             imageLoader = imageLoader,
             contentDescription = embed.title ?: "embed",
             contentScale = ContentScale.Fit,
@@ -1646,6 +1633,8 @@ private fun EmbedCard(embed: Embed, imageLoader: ImageLoader) {
 @Composable
 private fun VideoAttachment(att: Attachment, imageLoader: ImageLoader) {
     val context = LocalContext.current
+    val encodedVideoLink = Uri.encode(att.proxyUrl)
+    val VideoURL = "https://bway.lol/internal/video?video_link=$encodedVideoLink"
     Box(
         modifier = Modifier
             .padding(top = 2.dp)
@@ -1654,9 +1643,8 @@ private fun VideoAttachment(att: Attachment, imageLoader: ImageLoader) {
             .clickable {
                 runCatching {
                     val intent = Intent(
-                        Intent.ACTION_VIEW, Uri.parse(att.url)
-                    ).setDataAndType(Uri.parse(att.url), att.contentType ?: "video/*")
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        Intent.ACTION_VIEW, Uri.parse(VideoURL)
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(intent)
                 }
             }) {
