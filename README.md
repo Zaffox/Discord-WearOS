@@ -1,4 +1,5 @@
-This project is not being worked on because My discord account has been banned, not because of the app, but it got hacked and banned :(
+Some updates should be comming soon, working on threads and other minor changes :3 
+
 # Discord-wear
 Discord For WearOS
 ### 3RD PARTY CLIENTS VIOLATE DISCORDS TERMS OF SERVICE
