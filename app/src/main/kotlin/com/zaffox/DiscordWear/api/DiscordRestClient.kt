@@ -20,7 +20,7 @@ class DiscordRestClient(private val token: String) {
         .writeTimeout(10, TimeUnit.SECONDS)
         .build()
 
-    private val baseUrl = "https://discord.com/api/v10"
+private val baseUrl = "https://discord.com/api/v9";
     private val jsonMime = "application/json; charset=utf-8".toMediaType()
 
     private fun buildRequest(path: String): Request.Builder =
@@ -311,9 +311,21 @@ class DiscordRestClient(private val token: String) {
         DiscordUser.fromJson(userObj)
     }
 
-    suspend fun createDmChannel(userId: String): Result<Channel> = runCatching {
+    suspend fun createDmChannel(userId: String): Result<Channel> = runCatching { //This may require a Captcha and flag account for spam, be careful
         val body = JSONObject().put("recipient_id", userId)
         Channel.fromJson(JSONObject(post("/users/@me/channels", body)))
+    }
+
+    suspend fun getThreadMessages(threadId: String, limit: Int = 50): Result<List<DiscordMessage>> =
+        getMessages(threadId, limit)
+
+    suspend fun getActiveThreads(channelId: String): Result<List<Channel>> = runCatching {
+        val json = JSONObject(get("/channels/$channelId/threads/archived/public?limit=25"))
+        val arr = json.optJSONArray("threads") ?: return@runCatching emptyList()
+        (0 until arr.length()).map { Channel.fromJson(arr.getJSONObject(it)) }
+    }
+    suspend fun getThreadForMessage(channelId: String, messageId: String): Result<Channel> = runCatching {
+        Channel.fromJson(JSONObject(get("/channels/$channelId/messages/$messageId/thread")))
     }
 }
 

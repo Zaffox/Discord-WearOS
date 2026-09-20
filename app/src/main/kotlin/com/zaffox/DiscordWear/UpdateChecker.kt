@@ -29,7 +29,7 @@ object UpdateChecker {
     private const val GITHUB_OWNER = "zaffox"
     private const val GITHUB_REPO  = "Discord-WearOS"
     private const val API_URL      = "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
-    const val CURRENT_VERSION = "1.5"
+    const val CURRENT_VERSION = "1.6"
     private const val PREFS_NAME        = "update_checker"
     private const val KEY_LAST_CHECK    = "last_check_ms"
     private const val KEY_LATEST_TAG    = "latest_tag"
@@ -65,14 +65,8 @@ object UpdateChecker {
 
             val appContext = context.applicationContext
             while (true) {
-                val prefs       = prefs(appContext)
-                val lastCheckMs = prefs.getLong(KEY_LAST_CHECK, 0L)
-                val nowMs       = System.currentTimeMillis()
-                val dueMs       = (lastCheckMs + CHECK_INTERVAL_MS - nowMs).coerceAtLeast(0L)
-
-                if (dueMs > 0) delay(dueMs)
-
                 check(appContext)
+                delay(CHECK_INTERVAL_MS)
             }
         }
     }

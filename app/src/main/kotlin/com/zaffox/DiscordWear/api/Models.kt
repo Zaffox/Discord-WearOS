@@ -46,16 +46,16 @@ data class DiscordUser(
             avatarHash = o.optString("avatar").takeIf   { it.isNotEmpty() && it != "null" },
             premiumType = o.optInt("premium_type", 0),
             nameplateAsset = o.optJSONObject("collectibles")
-                              ?.optJSONObject("nameplate")
-                              ?.optString("sku_id")
-                              ?.takeIf { it.isNotEmpty() && it != "null" }
-                              ?: o.optString("nameplate_asset").takeIf { it.isNotEmpty() && it != "null" },
+                ?.optJSONObject("nameplate")
+                ?.optString("sku_id")
+                ?.takeIf { it.isNotEmpty() && it != "null" }
+                ?: o.optString("nameplate_asset").takeIf { it.isNotEmpty() && it != "null" },
             avatarDecorationSkuId =
                 o.optJSONObject("collectibles")
-                  ?.optJSONObject("avatar_decoration")
-                  ?.optString("sku_id")?.takeIf { it.isNotEmpty() && it != "null" }
-                ?: o.optJSONObject("avatar_decoration_data")
-                    ?.optString("sku_id")?.takeIf { it.isNotEmpty() && it != "null" },
+                    ?.optJSONObject("avatar_decoration")
+                    ?.optString("sku_id")?.takeIf { it.isNotEmpty() && it != "null" }
+                    ?: o.optJSONObject("avatar_decoration_data")
+                        ?.optString("sku_id")?.takeIf { it.isNotEmpty() && it != "null" },
             bannerHash = o.optString("banner").takeIf { it.isNotEmpty() && it != "null" },
             bio = o.optString("bio").takeIf { it.isNotEmpty() && it != "null" }
         )
@@ -204,11 +204,11 @@ data class GuildMember(
 data class GuildRole(
     val id: String,
     val name: String,
-    val color: Int,       
+    val color: Int,
     val position: Int,
     val permissions: Long,
-    val unicodeEmoji: String? = null,   
-    val iconHash: String? = null        
+    val unicodeEmoji: String? = null,
+    val iconHash: String? = null
 ) {
     fun iconUrl(size: Int = 16): String? =
         iconHash?.let { "https://cdn.discordapp.com/role-icons/$id/$it.png?size=$size" }
@@ -283,6 +283,7 @@ data class Channel(
 ) {
     val isDm: Boolean       get() = type == ChannelType.DM || type == ChannelType.GROUP_DM
     val isText: Boolean     get() = type == ChannelType.GUILD_TEXT || type == ChannelType.GUILD_NEWS
+    val isVoice: Boolean    get() = type == ChannelType.GUILD_VOICE
     val isCategory: Boolean get() = type == ChannelType.GUILD_CATEGORY
 
     val displayName: String
@@ -333,7 +334,12 @@ data class Channel(
                 name = o.optString("name"),
                 topic = o.optString("topic").takeIf { it.isNotEmpty() },
                 lastMessageId = o.optString("last_message_id").takeIf { it.isNotEmpty() },
-                parentId = o.optString("parent_id").takeIf { it.isNotEmpty() },
+                // org.json's optString() returns the literal string "null" (not Kotlin null)
+                // when the JSON value is a JSON null, which is exactly what Discord sends for
+                // top-level/"uncategorized" channels. That made those channels group under a
+                // bogus "null" parent key instead of the real null key, so they never rendered.
+                parentId = if (o.isNull("parent_id")) null
+                else o.optString("parent_id").takeIf { it.isNotEmpty() && it != "null" },
                 position = o.optInt("position", 0),
                 permissionOverwrites = overwrites,
                 recipients = recipients,
@@ -361,15 +367,15 @@ data class Attachment(
     val height: Int?
 ) {
     val isImage: Boolean get() = contentType?.startsWith("image/") == true
-        || filename.lowercase().let { it.endsWith(".png") || it.endsWith(".jpg")
+            || filename.lowercase().let { it.endsWith(".png") || it.endsWith(".jpg")
             || it.endsWith(".jpeg") || it.endsWith(".gif") || it.endsWith(".webp") }
 
     val isVideo: Boolean get() = contentType?.startsWith("video/") == true
-        || filename.lowercase().let { it.endsWith(".mp4") || it.endsWith(".mov")
+            || filename.lowercase().let { it.endsWith(".mp4") || it.endsWith(".mov")
             || it.endsWith(".webm") || it.endsWith(".mkv") || it.endsWith(".avi") }
 
     val isAudio: Boolean get() = contentType?.startsWith("audio/") == true
-        || filename.lowercase().let { it.endsWith(".mp3") || it.endsWith(".ogg")
+            || filename.lowercase().let { it.endsWith(".mp3") || it.endsWith(".ogg")
             || it.endsWith(".wav") || it.endsWith(".flac") || it.endsWith(".m4a") }
 
     companion object {
@@ -474,11 +480,11 @@ object ContentParser {
         val spans = mutableListOf<MarkdownSpan>()
         val regex = Regex(
             """(\*\*(.+?)\*\*)""" +
-            """|(\*(.+?)\*)""" +
-            """|(~~(.+?)~~)""" +
-            """|(```.+?```)|(`(.+?)`)""" +
-            """|(\|\|(.+?)\|\|)""" +
-            """|(_{2}(.+?)_{2})""",
+                    """|(\*(.+?)\*)""" +
+                    """|(~~(.+?)~~)""" +
+                    """|(```.+?```)|(`(.+?)`)""" +
+                    """|(\|\|(.+?)\|\|)""" +
+                    """|(_{2}(.+?)_{2})""",
             setOf(RegexOption.DOT_MATCHES_ALL)
         )
         var cursor = 0
@@ -505,10 +511,10 @@ object ContentParser {
 
     private val TOKEN_RE = Regex(
         "<a?:\\w+:\\d+>" +
-        "|<@!?\\d+>" +
-        "|<@&\\d+>" +
-        "|<#\\d+>" +
-        "|https?://[^\\s>]+"
+                "|<@!?\\d+>" +
+                "|<@&\\d+>" +
+                "|<#\\d+>" +
+                "|https?://[^\\s>]+"
     )
 
     fun parse(
@@ -632,12 +638,15 @@ data class DiscordMessage(
     val forwardedContent: String? = null,
     val forwardedAuthor: DiscordUser? = null,
     val forwardedAttachments: List<Attachment> = emptyList(),
-    val forwardedEmbeds: List<Embed> = emptyList()
+    val forwardedEmbeds: List<Embed> = emptyList(),
+    /** Non-null if this message started a thread. */
+    val threadId: String? = null,
+    val threadMessageCount: Int = 0
 ) {
     fun pingFor(userId: String, memberRoleIds: List<String> = emptyList()): Boolean =
         mentionEveryone ||
-        userId in mentionedUserIds ||
-        mentionedRoleIds.any { it in memberRoleIds }
+                userId in mentionedUserIds ||
+                mentionedRoleIds.any { it in memberRoleIds }
 
     companion object {
         fun fromJson(o: JSONObject): DiscordMessage {
@@ -739,7 +748,10 @@ data class DiscordMessage(
                 forwardedContent = fwdContent,
                 forwardedAuthor = fwdAuthor,
                 forwardedAttachments = fwdAttachments,
-                forwardedEmbeds = fwdEmbeds
+                forwardedEmbeds = fwdEmbeds,
+                threadId = o.optJSONObject("thread")?.optString("id")
+                    ?.takeIf { it.isNotEmpty() && it != "null" },
+                threadMessageCount = o.optJSONObject("thread")?.optInt("message_count", 0) ?: 0
             )
         }
 
