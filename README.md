@@ -45,6 +45,7 @@ Not Working (mostly becsuse everything is for bot tokens and not user)
 what will Never work
 - voice calls (E2E Requirement)
 - Joining server (Captha)
+- Notifications - FCM needs to be signed by discord, and keeping a live connection would be very battery heavy on WearOS
 _
 
 
