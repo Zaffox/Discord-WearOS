@@ -37,9 +37,7 @@ Currently working:
 - Nameplates
 
 Not Working (mostly becsuse everything is for bot tokens and not user)
-- Fowarded messages (API issue)
 - bot commands
-- hiding channels unavailable to user
 
 
 what will Never work
