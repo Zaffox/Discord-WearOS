@@ -46,5 +46,8 @@ what will Never work
 _
 
 
+How to install:
+https://anexplorer.io/install/apk-on-wear-os
+
 Please check this page for updates often to get nwe features and bug fixes
 (Auto update check comming soon)
