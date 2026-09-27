@@ -53,9 +53,8 @@ fun DmsScreen(
     val menuState = rememberScalingLazyListState()
 
     LaunchedEffect(Unit) {
-        if (dmChannels.isEmpty()) {
-            scope.launch { repo.refreshDmChannels(); loading = false }
-        } else {
+        scope.launch {
+            repo.refreshDmChannels()
             loading = false
         }
     }
@@ -87,10 +86,17 @@ fun DmsScreen(
                             hiddenIds = SetupPreferences.getHiddenDms(context)
                             menuDm = null
                         },
-                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
                         colors = ButtonDefaults.filledTonalButtonColors()
-                    ) { 
-                        Icon(painter = painterResource(id = if (isHiddenMenu) R.drawable.unhide else R.drawable.hide), tint = Color.White, contentDescription = null, modifier = Modifier.size(16.dp))
+                    ) {
+                        Icon(
+                            painter = painterResource(id = if (isHiddenMenu) R.drawable.unhide else R.drawable.hide),
+                            tint = Color.White,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
                         Spacer(Modifier.width(6.dp))
                         Text(if (isHiddenMenu) "Unhide" else "Hide")
                     }
@@ -98,7 +104,9 @@ fun DmsScreen(
                 item {
                     Button(
                         onClick = { menuDm = null },
-                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
                         colors = ButtonDefaults.filledTonalButtonColors()
                     ) { Text("Cancel") }
                 }
@@ -141,7 +149,9 @@ fun DmsScreen(
                     item {
                         Button(
                             onClick = { showHidden = !showHidden },
-                            modifier = Modifier.fillMaxWidth().height(32.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(32.dp),
                             colors = ButtonDefaults.filledTonalButtonColors()
                         ) {
                             Text(
@@ -190,7 +200,6 @@ private fun DmButton(
     val nameplateUrl = recipient?.nameplateUrl()
     val status = presence?.status ?: OnlineStatus.OFFLINE
     val initial = dm.displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
-    val backgroundUrl = nameplateUrl
 
     Box(
         modifier = Modifier
@@ -199,23 +208,26 @@ private fun DmButton(
             .clip(RoundedCornerShape(16.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
-        if (backgroundUrl != null && !isHidden) {
+        if (nameplateUrl != null && !isHidden) {
             SubcomposeAsyncImage(
-                model = ImageRequest.Builder(context).data(backgroundUrl).crossfade(true).build(),
+                model = ImageRequest.Builder(context).data(nameplateUrl).crossfade(true).build(),
                 imageLoader = imageLoader,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize(),
                 error = { Box(Modifier.matchParentSize()) }
             )
-            val scrimAlphaStart = if (nameplateUrl != null) 0.45f else 0.72f
-            val scrimAlphaEnd = if (nameplateUrl != null) 0.20f else 0.45f
+            val scrimAlphaStart = 0.45f
+            val scrimAlphaEnd = 0.20f
             Box(
                 modifier = Modifier
                     .matchParentSize()
                     .background(
                         Brush.horizontalGradient(
-                            listOf(Color.Black.copy(scrimAlphaStart), Color.Black.copy(scrimAlphaEnd))
+                            listOf(
+                                Color.Black.copy(scrimAlphaStart),
+                                Color.Black.copy(scrimAlphaEnd)
+                            )
                         )
                     )
             )
@@ -237,35 +249,59 @@ private fun DmButton(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-             Box(contentAlignment = Alignment.BottomEnd) {
+            Box(contentAlignment = Alignment.BottomEnd) {
                 Box(modifier = Modifier.size(52.dp), contentAlignment = Alignment.Center) {
                     val avatarAlpha = if (isHidden) 0.38f else 1f
                     if (avatarUrl != null && !isHidden) {
                         SubcomposeAsyncImage(
-                            model = ImageRequest.Builder(context).data(avatarUrl).crossfade(true).build(),
+                            model = ImageRequest.Builder(context).data(avatarUrl).crossfade(true)
+                                .build(),
                             imageLoader = imageLoader,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(38.dp).clip(CircleShape),
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape),
                             error = {
                                 Box(
-                                    modifier = Modifier.size(38.dp).background(Color(0xFF1E1F22), CircleShape),
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .background(Color(0xFF1E1F22), CircleShape),
                                     contentAlignment = Alignment.Center
-                                ) { Text(initial, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+                                ) {
+                                    Text(
+                                        initial,
+                                        color = Color.White,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         )
                     } else {
                         Box(
-                            modifier = Modifier.size(38.dp)
-                                .background(Color(0xFF1E1F22).copy(alpha = avatarAlpha), CircleShape),
+                            modifier = Modifier
+                                .size(38.dp)
+                                .background(
+                                    Color(0xFF1E1F22).copy(alpha = avatarAlpha),
+                                    CircleShape
+                                ),
                             contentAlignment = Alignment.Center
-                        ) { Text(initial, color = Color.White.copy(alpha = avatarAlpha), fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+                        ) {
+                            Text(
+                                initial,
+                                color = Color.White.copy(alpha = avatarAlpha),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
 
                     val decorUrl = recipient?.avatarDecorationUrl()
                     if (decorUrl != null && !isHidden) {
                         SubcomposeAsyncImage(
-                            model = ImageRequest.Builder(context).data(decorUrl).crossfade(false).build(),
+                            model = ImageRequest.Builder(context).data(decorUrl).crossfade(false)
+                                .build(),
                             imageLoader = imageLoader,
                             contentDescription = null,
                             contentScale = ContentScale.Fit,
@@ -290,24 +326,35 @@ private fun DmButton(
                         }
                     } else if (hasUnread && !isHidden) {
                         Box(
-                            modifier = Modifier.align(Alignment.TopEnd).size(9.dp)
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(9.dp)
                                 .background(Color.White, CircleShape)
                         )
                     }
                 }
                 if (!isHidden) {
                     Box(
-                        modifier = Modifier.size(13.dp).background(Color(0xFF1E1F22), CircleShape),
+                        modifier = Modifier
+                            .size(13.dp)
+                            .background(Color(0xFF1E1F22), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Box(modifier = Modifier.size(9.dp).background(status.dotColor(), CircleShape))
+                        Box(
+                            modifier = Modifier
+                                .size(9.dp)
+                                .background(status.dotColor(), CircleShape)
+                        )
                     }
                 }
             }
 
             Column(modifier = Modifier.weight(1f)) {
                 val nameColor = if (isHidden) Color.White.copy(alpha = 0.38f) else Color.White
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     Text(
                         text = dm.displayName,
                         style = MaterialTheme.typography.bodySmall,
@@ -319,16 +366,25 @@ private fun DmButton(
                     )
                 }
                 if (isHidden) {
-                    Text("Hidden", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.38f), fontSize = 9.sp)
+                    Text(
+                        "Hidden",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.38f),
+                        fontSize = 9.sp
+                    )
                 } else {
                     val customText = presence?.customStatusText
                     val customEmoji = presence?.customStatusEmoji
                     if (customText != null || customEmoji != null) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
                             if (customEmoji != null) {
                                 if (customEmoji.startsWith("http")) {
                                     SubcomposeAsyncImage(
-                                        model = ImageRequest.Builder(context).data(customEmoji).crossfade(true).build(),
+                                        model = ImageRequest.Builder(context).data(customEmoji)
+                                            .crossfade(true).build(),
                                         imageLoader = imageLoader,
                                         contentDescription = null,
                                         modifier = Modifier.size(12.dp)
@@ -338,14 +394,18 @@ private fun DmButton(
                                 }
                             }
                             if (customText != null) {
-                                Text(text = customText, style = MaterialTheme.typography.labelSmall,
+                                Text(
+                                    text = customText, style = MaterialTheme.typography.labelSmall,
                                     color = Color.White.copy(alpha = 0.75f), maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis, fontSize = 9.sp)
+                                    overflow = TextOverflow.Ellipsis, fontSize = 9.sp
+                                )
                             }
                         }
                     } else {
-                        Text(text = status.label(), style = MaterialTheme.typography.labelSmall,
-                            color = status.dotColor().copy(alpha = 0.9f), fontSize = 9.sp)
+                        Text(
+                            text = status.label(), style = MaterialTheme.typography.labelSmall,
+                            color = status.dotColor().copy(alpha = 0.9f), fontSize = 9.sp
+                        )
                     }
                 }
             }

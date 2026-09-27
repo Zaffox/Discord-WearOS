@@ -55,10 +55,10 @@ fun PhotoPickerScreen(
     LaunchedEffect(Unit) {
         permGranted = if (android.os.Build.VERSION.SDK_INT >= 33) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) ==
-                PackageManager.PERMISSION_GRANTED
+                    PackageManager.PERMISSION_GRANTED
         } else {
             ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) ==
-                PackageManager.PERMISSION_GRANTED
+                    PackageManager.PERMISSION_GRANTED
         }
     }
 
@@ -71,10 +71,7 @@ fun PhotoPickerScreen(
     LaunchedEffect(permGranted) {
         if (!permGranted) return@LaunchedEffect
         val result = mutableListOf<MediaImage>()
-        val collection = if (android.os.Build.VERSION.SDK_INT >= 29)
-            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-        else
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        val collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
 
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
@@ -83,23 +80,27 @@ fun PhotoPickerScreen(
             MediaStore.Images.Media.DATE_ADDED
         )
         val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
-        context.contentResolver.query(collection, projection, null, null, sortOrder)?.use { cursor ->
-            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-            val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
-            val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idCol)
-                val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-                result.add(MediaImage(
-                    id = id,
-                    uri = uri,
-                    displayName = cursor.getString(nameCol) ?: "image",
-                    mimeType = cursor.getString(mimeCol) ?: "image/jpeg",
-                    dateAdded = cursor.getLong(dateCol)
-                ))
+        context.contentResolver.query(collection, projection, null, null, sortOrder)
+            ?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+                val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
+                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idCol)
+                    val uri =
+                        ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+                    result.add(
+                        MediaImage(
+                            id = id,
+                            uri = uri,
+                            displayName = cursor.getString(nameCol) ?: "image",
+                            mimeType = cursor.getString(mimeCol) ?: "image/jpeg",
+                            dateAdded = cursor.getLong(dateCol)
+                        )
+                    )
+                }
             }
-        }
         images = result
     }
 
@@ -299,12 +300,16 @@ private fun ImageConfirmScreen(
                 ) {
                     Button(
                         onClick = { onConfirm(uri, mimeType) },
-                        modifier = Modifier.weight(1f).height(36.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp),
                         colors = ButtonDefaults.filledTonalButtonColors()
                     ) { Text("Send") }
                     Button(
                         onClick = onCancel,
-                        modifier = Modifier.weight(1f).height(36.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp),
                         colors = ButtonDefaults.outlinedButtonColors()
                     ) { Text("Back") }
                 }

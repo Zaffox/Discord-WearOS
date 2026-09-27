@@ -8,32 +8,57 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.zaffox.discordwear.SetupPreferences
 import org.json.JSONArray
 import org.json.JSONObject
 
 class DiscordRepository(token: String, private val context: Context? = null) {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val rest = DiscordRestClient(token)
     private val gateway = DiscordGateway(token)
 
-    private val prefs: SharedPreferences? = context?.getSharedPreferences("discord_wear_cache", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences? =
+        context?.getSharedPreferences("discord_wear_cache", Context.MODE_PRIVATE)
 
     private val _currentUser = MutableStateFlow<DiscordUser?>(null)
     val currentUser: StateFlow<DiscordUser?> = _currentUser.asStateFlow()
 
-    @Volatile private var currentUserId: String? = null
+    @Volatile
+    private var currentUserId: String? = null
 
     private val _guilds = MutableStateFlow<List<Guild>>(loadCachedGuilds())
     val guilds: StateFlow<List<Guild>> = _guilds.asStateFlow()
 
     private val _dmChannels = MutableStateFlow<List<Channel>>(loadCachedDmChannels())
     val dmChannels: StateFlow<List<Channel>> = _dmChannels.asStateFlow()
+
+    private val _channelNames = MutableStateFlow<Map<String, String>>(emptyMap())
+    val channelNames: StateFlow<Map<String, String>> = _channelNames.asStateFlow()
+
+    private val _channelGuilds = MutableStateFlow<Map<String, String>>(emptyMap())
+    val channelGuilds: StateFlow<Map<String, String>> = _channelGuilds.asStateFlow()
+
+    private val _guildChannelsMap = MutableStateFlow<Map<String, List<CategoryGroup>>>(emptyMap())
+    val guildChannelsMap: StateFlow<Map<String, List<CategoryGroup>>> =
+        _guildChannelsMap.asStateFlow()
+
+    suspend fun refreshGuildChannels(
+        guildId: String,
+        filterInaccessible: Boolean = false
+    ): Result<List<CategoryGroup>> {
+        val hideInaccessible =
+            context?.let { SetupPreferences.getHideInaccessibleChannels(it) } ?: filterInaccessible
+        return rest.getGuildChannels(guildId, hideInaccessible).onSuccess { groups ->
+            cacheChannelNames(groups)
+            saveChannels(guildId, groups)
+            _guildChannelsMap.update { current -> current + (guildId to groups) }
+        }
+    }
 
     private val _messages = MutableStateFlow<Map<String, List<DiscordMessage>>>(emptyMap())
     val messages: StateFlow<Map<String, List<DiscordMessage>>> = _messages.asStateFlow()
@@ -47,11 +72,6 @@ class DiscordRepository(token: String, private val context: Context? = null) {
     private val _readState = MutableStateFlow<Map<String, ChannelUnreadState>>(emptyMap())
     val readState: StateFlow<Map<String, ChannelUnreadState>> = _readState.asStateFlow()
 
-    val totalMentionCount: StateFlow<Int> = kotlinx.coroutines.flow.MutableStateFlow(0).also {}.let {
-        _readState
-    }.let { MutableStateFlow(0) }
-    private val _totalMentions = kotlinx.coroutines.flow.MutableStateFlow(0)
-    val totalMentions: StateFlow<Int> = _totalMentions.asStateFlow()
     private val emojiCache = object : LinkedHashMap<String, List<GuildEmoji>>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: Map.Entry<String, List<GuildEmoji>>?) =
             size > 10 // Keep max 10 guilds' emojis in cache
@@ -70,6 +90,20 @@ class DiscordRepository(token: String, private val context: Context? = null) {
         override fun removeEldestEntry(eldest: Map.Entry<String, List<GuildRole>>?) =
             size > 20 // Max 20 guilds' roles cached
     }
+    private val guildMemberCache = object : LinkedHashMap<String, GuildMember>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: Map.Entry<String, GuildMember>?) = size > 200
+    }
+
+    suspend fun getGuildMember(guildId: String, userId: String): GuildMember? {
+        val cacheKey = "$guildId:$userId"
+        guildMemberCache[cacheKey]?.let { return it }
+        val member = rest.getGuildMember(guildId, userId).getOrNull()
+        if (member != null) {
+            guildMemberCache[cacheKey] = member
+        }
+        return member
+    }
+
     private val typingJobs = mutableMapOf<String, Job>()
     private val lastSentAt = mutableMapOf<String, Long>()
 
@@ -92,12 +126,9 @@ class DiscordRepository(token: String, private val context: Context? = null) {
     private val _presences = MutableStateFlow<Map<String, UserPresence>>(emptyMap())
     val presences: StateFlow<Map<String, UserPresence>> = _presences.asStateFlow()
 
-    fun getPresence(userId: String): UserPresence? = _presences.value[userId]
-
-    val gatewayEvents = gateway.events
-
     fun getChannelNames(): Map<String, String> = channelNameCache.toMap()
     fun getChannelGuilds(): Map<String, String> = channelGuildCache.toMap()
+    fun getMyRoles(guildId: String): List<String> = myRolesByGuild[guildId] ?: emptyList()
 
     fun canSendMessage(channelId: String): Boolean {
         val channel = channelCache[channelId] ?: return true
@@ -110,32 +141,20 @@ class DiscordRepository(token: String, private val context: Context? = null) {
         var deny = 0L
 
         overwrites.firstOrNull { it.type == 0 && it.id == guildId }?.let {
-            deny = deny  or it.deny
+            deny = deny or it.deny
             allow = allow or it.allow
         }
 
         val myRoles = myRolesByGuild[guildId] ?: emptyList()
         for (ow in overwrites.filter { it.type == 0 && it.id in myRoles }) {
-            deny = deny  or ow.deny
+            deny = deny or ow.deny
             allow = allow or ow.allow
         }
 
         if (allow and Permissions.SEND_MESSAGES != 0L) return true
-        if (deny  and Permissions.SEND_MESSAGES != 0L) return false
+        if (deny and Permissions.SEND_MESSAGES != 0L) return false
         return true
     }
-
-    fun typingInChannel(channelId: String): StateFlow<Set<String>> =
-        object : StateFlow<Set<String>> {
-            override val value: Set<String>
-                get() = _typing.value[channelId] ?: emptySet()
-            override val replayCache: List<Set<String>>
-                get() = listOf(value)
-            override suspend fun collect(collector: kotlinx.coroutines.flow.FlowCollector<Set<String>>): Nothing {
-                _typing.map { it[channelId] ?: emptySet() }.collect(collector)
-                error("unreachable")
-            }
-        }
 
     fun connect() {
         gateway.connect()
@@ -145,8 +164,10 @@ class DiscordRepository(token: String, private val context: Context? = null) {
         scope.launch { refreshDmChannels() }
         scope.launch {
             val cachedGuildIds = loadCachedGuilds().map { it.id }
+            val initialMap = mutableMapOf<String, List<CategoryGroup>>()
             for (guildId in cachedGuildIds) {
                 val groups = getCachedChannels(guildId, filterInaccessible = false) ?: continue
+                initialMap[guildId] = groups
                 groups.forEach { group ->
                     group.channels.forEach { ch ->
                         channelNameCache[ch.id] = ch.name
@@ -154,10 +175,17 @@ class DiscordRepository(token: String, private val context: Context? = null) {
                     }
                 }
             }
+            _guildChannelsMap.value = initialMap
+            _channelNames.value = channelNameCache.toMap()
+            _channelGuilds.value = channelGuildCache.toMap()
         }
     }
 
     fun disconnect() = gateway.disconnect()
+    fun selectChannel(channelId: String, guildId: String?) {
+        gateway.selectChannel(channelId, guildId)
+    }
+
     fun refreshOnResume(activeChannelId: String?) {
         scope.launch {
             runCatching { refreshDmChannels() }
@@ -184,7 +212,11 @@ class DiscordRepository(token: String, private val context: Context? = null) {
     suspend fun refreshDmChannels() {
         rest.getDmChannels().onSuccess { list ->
             _dmChannels.value = list
-            list.forEach { ch -> channelNameCache[ch.id] = ch.displayName }
+            list.forEach { ch ->
+                channelNameCache[ch.id] = ch.displayName
+                channelCache[ch.id] = ch
+            }
+            _channelNames.value = channelNameCache.toMap()
             saveDmChannels(list)
         }
     }
@@ -194,6 +226,24 @@ class DiscordRepository(token: String, private val context: Context? = null) {
             g.channels.forEach { ch ->
                 channelNameCache[ch.id] = ch.name
                 channelCache[ch.id] = ch
+                ch.guildId?.let { channelGuildCache[ch.id] = it }
+            }
+        }
+        _channelNames.value = channelNameCache.toMap()
+        _channelGuilds.value = channelGuildCache.toMap()
+    }
+
+    fun ensureChannelCached(channelId: String) {
+        if (channelNameCache.containsKey(channelId)) return
+        scope.launch {
+            rest.getChannel(channelId).onSuccess { ch ->
+                channelCache[ch.id] = ch
+                channelNameCache[ch.id] = ch.displayName
+                ch.guildId?.let { gId ->
+                    channelGuildCache[ch.id] = gId
+                }
+                _channelNames.value = channelNameCache.toMap()
+                _channelGuilds.value = channelGuildCache.toMap()
             }
         }
     }
@@ -208,11 +258,35 @@ class DiscordRepository(token: String, private val context: Context? = null) {
             rest.getGuildRoles(guildId).getOrNull() ?: return null
         }
         val roleMap = roles.associateBy { it.id }
-        // Highest-position role with a non-zero color wins — Discord's own rule
         return roleIds
             .mapNotNull { roleMap[it] }
             .filter { it.color != 0 || it.unicodeEmoji != null || it.iconHash != null }
             .maxByOrNull { it.position }
+    }
+
+    suspend fun getRolesForUser(guildId: String, userId: String): List<GuildRole> {
+        val cacheKey = "$guildId/$userId"
+        val roleIds = memberRolesCache.getOrPut(cacheKey) {
+            rest.getGuildMemberRoles(guildId, userId).getOrNull() ?: return emptyList()
+        }
+        val roles = guildRolesCache.getOrPut(guildId) {
+            rest.getGuildRoles(guildId).getOrNull() ?: return emptyList()
+        }
+        val roleMap = roles.associateBy { it.id }
+        return roleIds
+            .mapNotNull { roleMap[it] }
+            .sortedByDescending { it.position }
+    }
+
+    suspend fun getRoleWithIconForUser(guildId: String, userId: String): GuildRole? {
+        val roles = getRolesForUser(guildId, userId)
+        return roles.firstOrNull { !it.unicodeEmoji.isNullOrEmpty() || !it.iconHash.isNullOrEmpty() }
+    }
+
+    suspend fun getGuildRoles(guildId: String): List<GuildRole> {
+        return guildRolesCache.getOrPut(guildId) {
+            rest.getGuildRoles(guildId).getOrNull() ?: emptyList()
+        }
     }
 
     @Deprecated("Use getTopRoleForUser instead")
@@ -237,36 +311,39 @@ class DiscordRepository(token: String, private val context: Context? = null) {
         return emptyList()
     }
 
-   fun getCachedChannels(guildId: String, filterInaccessible: Boolean): List<CategoryGroup>? = runCatching {
-        val json = prefs?.getString("channels_$guildId", null) ?: return null
-        val arr = JSONArray(json)
-        val allChannels = Channel.listFromJson(arr)
-        
-        // Populate in-memory caches
-        allChannels.forEach { ch ->
-            channelCache[ch.id] = ch
-            channelNameCache[ch.id] = ch.displayName
-            channelGuildCache[ch.id] = guildId
-        }
-        
-        val textChannels = allChannels.filter { it.isText }
-        val categories = allChannels.filter { it.isCategory }.sortedBy { it.position }
-        val byParent = textChannels.groupBy { it.parentId }
-        val groups = mutableListOf<CategoryGroup>()
-        val topLevel = byParent[null].orEmpty()
-            .filter { !filterInaccessible || it.hasAccess }.sortedBy { it.position }
-        if (topLevel.isNotEmpty()) groups.add(CategoryGroup(null, topLevel))
-        for (cat in categories) {
-            val children = byParent[cat.id].orEmpty()
+    fun getCachedChannels(guildId: String, filterInaccessible: Boolean): List<CategoryGroup>? =
+        runCatching {
+            val json = prefs?.getString("channels_$guildId", null) ?: return null
+            val arr = JSONArray(json)
+            val allChannels = Channel.listFromJson(arr)
+
+            // Populate in-memory caches
+            allChannels.forEach { ch ->
+                channelCache[ch.id] = ch
+                channelNameCache[ch.id] = ch.displayName
+                channelGuildCache[ch.id] = guildId
+            }
+
+            val textChannels = allChannels.filter { it.isText }
+            val categories = allChannels.filter { it.isCategory }.sortedBy { it.position }
+            val byParent = textChannels.groupBy { it.parentId }
+            val groups = mutableListOf<CategoryGroup>()
+            val topLevel = byParent[null].orEmpty()
                 .filter { !filterInaccessible || it.hasAccess }.sortedBy { it.position }
-            if (children.isNotEmpty()) groups.add(CategoryGroup(cat, children))
-        }
-        groups.ifEmpty { null }
-    }.getOrNull()
+            if (topLevel.isNotEmpty()) groups.add(CategoryGroup(null, topLevel))
+            for (cat in categories) {
+                val children = byParent[cat.id].orEmpty()
+                    .filter { !filterInaccessible || it.hasAccess }.sortedBy { it.position }
+                if (children.isNotEmpty()) groups.add(CategoryGroup(cat, children))
+            }
+            groups.ifEmpty { null }
+        }.getOrNull()
 
     fun saveChannels(guildId: String, groups: List<CategoryGroup>) = runCatching {
         val allChannels = groups.flatMap { g -> listOfNotNull(g.category) + g.channels }
-        prefs?.edit()?.putString("channels_$guildId", JSONArray(allChannels.map { it.toJson() }).toString())?.apply()
+        prefs?.edit()
+            ?.putString("channels_$guildId", JSONArray(allChannels.map { it.toJson() }).toString())
+            ?.apply()
     }
 
     private val loadedChannels = mutableSetOf<String>()
@@ -291,9 +368,9 @@ class DiscordRepository(token: String, private val context: Context? = null) {
                 }
             }
         }
-        
+
         rest.getMessages(channelId).onSuccess { fetched ->
-            val fetchedList = fetched.reversed() 
+            val fetchedList = fetched.reversed()
             fetchedList.forEach { userDisplayNames[it.author.id] = it.author.displayName }
             _messages.update { current ->
                 val existing = current[channelId].orEmpty()
@@ -302,13 +379,10 @@ class DiscordRepository(token: String, private val context: Context? = null) {
                 current + (channelId to (fetchedList + newOnly))
             }
             loadedChannels.add(channelId)
-            fetchedList.lastOrNull()?.id?.let { markChannelRead(channelId, it) }
         }
     }
 
     fun getDisplayName(userId: String): String? = userDisplayNames[userId]
-    fun isChannelLoaded(channelId: String) = channelId in loadedChannels
-
     suspend fun sendMessage(channelId: String, content: String): Result<DiscordMessage> {
         val result = rest.sendMessage(channelId, content)
         result.onSuccess { msg ->
@@ -322,18 +396,6 @@ class DiscordRepository(token: String, private val context: Context? = null) {
         return result
     }
 
-    suspend fun sendGifAttachment(channelId: String, gifUrl: String): Result<DiscordMessage> {
-        val result = rest.sendGifAttachment(channelId, gifUrl)
-        result.onSuccess { msg ->
-            lastSentAt[channelId] = System.currentTimeMillis()
-            _messages.update { current ->
-                val list = current[channelId].orEmpty().toMutableList()
-                if (list.none { it.id == msg.id }) list.add(msg)
-                current + (channelId to list)
-            }
-        }
-        return result
-    }
 
     suspend fun sendFileAttachment(
         channelId: String,
@@ -384,8 +446,13 @@ class DiscordRepository(token: String, private val context: Context? = null) {
         return result
     }
 
-    suspend fun sendReply(channelId: String, content: String, replyToId: String): Result<DiscordMessage> {
-        val result = rest.sendReply(channelId, content, replyToId)
+    suspend fun sendReply(
+        channelId: String,
+        content: String,
+        replyToId: String,
+        ping: Boolean = true
+    ): Result<DiscordMessage> {
+        val result = rest.sendReply(channelId, content, replyToId, ping)
         result.onSuccess { msg ->
             lastSentAt[channelId] = System.currentTimeMillis()
             _messages.update { current ->
@@ -397,7 +464,11 @@ class DiscordRepository(token: String, private val context: Context? = null) {
         return result
     }
 
-    suspend fun editMessage(channelId: String, messageId: String, newContent: String): Result<DiscordMessage> {
+    suspend fun editMessage(
+        channelId: String,
+        messageId: String,
+        newContent: String
+    ): Result<DiscordMessage> {
         val result = rest.editMessage(channelId, messageId, newContent)
         result.onSuccess { updated ->
             _messages.update { current ->
@@ -424,24 +495,66 @@ class DiscordRepository(token: String, private val context: Context? = null) {
     suspend fun fetchUserProfile(userId: String): Result<DiscordUser> =
         rest.getUserProfile(userId)
 
-    suspend fun openDmWithUser(userId: String): Result<Channel> =
-        rest.createDmChannel(userId)
-
-    suspend fun toggleReaction(channelId: String, messageId: String, emoji: ReactionEmoji) {
+    suspend fun toggleReaction(
+        channelId: String,
+        messageId: String,
+        emoji: ReactionEmoji,
+        burst: Boolean = false
+    ) {
         val msg = _messages.value[channelId]?.firstOrNull { it.id == messageId } ?: return
         val existing = msg.reactions.firstOrNull { it.emoji.apiKey == emoji.apiKey }
-        if (existing?.me == true) {
-            rest.removeReaction(channelId, messageId, emoji.apiKey)
-            updateReactionLocally(channelId, messageId, emoji, delta = -1, me = false)
+        if (burst) {
+            val isBurstMe = existing?.meBurst == true
+            if (isBurstMe) {
+                rest.removeReaction(channelId, messageId, emoji.apiKey, burst = true)
+                updateReactionLocally(
+                    channelId,
+                    messageId,
+                    emoji,
+                    delta = -1,
+                    me = false,
+                    burst = true
+                )
+            } else {
+                rest.addReaction(channelId, messageId, emoji.apiKey, burst = true)
+                updateReactionLocally(
+                    channelId,
+                    messageId,
+                    emoji,
+                    delta = +1,
+                    me = true,
+                    burst = true
+                )
+            }
         } else {
-            rest.addReaction(channelId, messageId, emoji.apiKey)
-            updateReactionLocally(channelId, messageId, emoji, delta = +1, me = true)
+            val isRegularMe = existing?.me == true
+            if (isRegularMe) {
+                rest.removeReaction(channelId, messageId, emoji.apiKey, burst = false)
+                updateReactionLocally(
+                    channelId,
+                    messageId,
+                    emoji,
+                    delta = -1,
+                    me = false,
+                    burst = false
+                )
+            } else {
+                rest.addReaction(channelId, messageId, emoji.apiKey, burst = false)
+                updateReactionLocally(
+                    channelId,
+                    messageId,
+                    emoji,
+                    delta = +1,
+                    me = true,
+                    burst = false
+                )
+            }
         }
     }
 
     private fun updateReactionLocally(
         channelId: String, messageId: String,
-        emoji: ReactionEmoji, delta: Int, me: Boolean?
+        emoji: ReactionEmoji, delta: Int, me: Boolean?, burst: Boolean = false
     ) {
         _messages.update { current ->
             val list = current[channelId]?.map { msg ->
@@ -449,14 +562,34 @@ class DiscordRepository(token: String, private val context: Context? = null) {
                 val existing = msg.reactions.firstOrNull { it.emoji.apiKey == emoji.apiKey }
                 val newReactions = if (existing != null) {
                     val newCount = existing.count + delta
-                    val newMe = me ?: existing.me
-                    if (newCount <= 0) msg.reactions.filter { it.emoji.apiKey != emoji.apiKey }
-                    else msg.reactions.map {
-                        if (it.emoji.apiKey == emoji.apiKey) it.copy(count = newCount, me = newMe) else it
+                    val newMe = if (burst) existing.me else (me ?: existing.me)
+                    val newMeBurst = if (burst) (me ?: existing.meBurst) else existing.meBurst
+                    val newBurstCount =
+                        if (burst) existing.burstCount + delta else existing.burstCount
+                    if (newCount <= 0 && !newMe && !newMeBurst) {
+                        msg.reactions.filter { it.emoji.apiKey != emoji.apiKey }
+                    } else {
+                        msg.reactions.map {
+                            if (it.emoji.apiKey == emoji.apiKey) {
+                                it.copy(
+                                    count = maxOf(0, newCount),
+                                    me = newMe,
+                                    meBurst = newMeBurst,
+                                    burstCount = maxOf(0, newBurstCount)
+                                )
+                            } else it
+                        }
                     }
                 } else {
-                    if (delta > 0) msg.reactions + Reaction(emoji, 1, me = me == true)
-                    else msg.reactions
+                    if (delta > 0) {
+                        msg.reactions + Reaction(
+                            emoji = emoji,
+                            count = delta,
+                            me = if (burst) false else (me == true),
+                            meBurst = if (burst) (me == true) else false,
+                            burstCount = if (burst) delta else 0
+                        )
+                    } else msg.reactions
                 }
                 msg.copy(reactions = newReactions)
             } ?: return@update current
@@ -473,7 +606,10 @@ class DiscordRepository(token: String, private val context: Context? = null) {
                         currentUserId = event.user.id
                         if (event.readState.isNotEmpty()) {
                             _readState.value = event.readState
-                            _totalMentions.value = event.readState.values.sumOf { it.mentionCount }
+                            event.readState.filter { it.value.mentionCount > 0 }
+                                .forEach { (chId, _) ->
+                                    ensureChannelCached(chId)
+                                }
                         }
                         if (event.presences.isNotEmpty()) {
                             _presences.value = event.presences
@@ -487,7 +623,8 @@ class DiscordRepository(token: String, private val context: Context? = null) {
                         userDisplayNames[msg.author.id] = msg.author.displayName
                         val myId = currentUserId
                         if (myId != null && msg.author.id == myId &&
-                            event.guildId != null && event.memberRoleIds.isNotEmpty()) {
+                            event.guildId != null && event.memberRoleIds.isNotEmpty()
+                        ) {
                             myRolesByGuild[event.guildId] = event.memberRoleIds
                         }
                         _messages.update { current ->
@@ -500,7 +637,8 @@ class DiscordRepository(token: String, private val context: Context? = null) {
                             _dmChannels.update { channels ->
                                 channels.map { ch ->
                                     if (ch.id == msg.channelId &&
-                                        (ch.lastMessageId == null || msg.id > ch.lastMessageId))
+                                        (ch.lastMessageId == null || msg.id > ch.lastMessageId)
+                                    )
                                         ch.copy(lastMessageId = msg.id)
                                     else ch
                                 }
@@ -509,7 +647,8 @@ class DiscordRepository(token: String, private val context: Context? = null) {
                         msg.guildId?.let { channelGuildCache[msg.channelId] = it }
                         if (myId != null && msg.author.id != myId) {
                             val guildId = event.guildId ?: msg.guildId
-                            val memberRoles = if (guildId != null) myRolesByGuild[guildId] ?: emptyList() else emptyList()
+                            val memberRoles = if (guildId != null) myRolesByGuild[guildId]
+                                ?: emptyList() else emptyList()
                             if (msg.pingFor(myId, memberRoles)) {
                                 val channelName = channelNameCache[msg.channelId] ?: msg.channelId
                                 val guildName = msg.guildId?.let { gid ->
@@ -550,15 +689,37 @@ class DiscordRepository(token: String, private val context: Context? = null) {
 
                     is GatewayEvent.ReactionAdd -> {
                         val isMe = event.userId == currentUserId
-                        updateReactionLocally(event.channelId, event.messageId, event.emoji, +1, if (isMe) true else null)
+                        if (!isMe) {
+                            updateReactionLocally(
+                                event.channelId,
+                                event.messageId,
+                                event.emoji,
+                                +1,
+                                null,
+                                burst = event.burst
+                            )
+                        }
                     }
 
                     is GatewayEvent.ReactionRemove -> {
                         val isMe = event.userId == currentUserId
-                        updateReactionLocally(event.channelId, event.messageId, event.emoji, -1, if (isMe) false else null)
+                        if (!isMe) {
+                            updateReactionLocally(
+                                event.channelId,
+                                event.messageId,
+                                event.emoji,
+                                -1,
+                                null,
+                                burst = event.burst
+                            )
+                        }
                     }
 
                     is GatewayEvent.TypingStart -> {
+                        android.util.Log.d(
+                            "DiscordRepository",
+                            "TypingStart event: channel=${event.channelId}, user=${event.userId}"
+                        )
                         event.displayName?.let { userDisplayNames[event.userId] = it }
                         val updated = _typing.value.toMutableMap()
                         val users = (updated[event.channelId] ?: emptySet()) + event.userId
@@ -581,6 +742,39 @@ class DiscordRepository(token: String, private val context: Context? = null) {
                         val p = event.presence
                         if (p.userId.isNotEmpty()) {
                             _presences.update { current -> current + (p.userId to p) }
+                        }
+                    }
+
+                    is GatewayEvent.ChannelCreate -> {
+                        val ch = event.channel
+                        if (ch.isDm) {
+                            scope.launch { refreshDmChannels() }
+                        } else if (ch.guildId != null) {
+                            scope.launch { refreshGuildChannels(ch.guildId) }
+                        }
+                    }
+
+                    is GatewayEvent.ChannelUpdate -> {
+                        val ch = event.channel
+                        channelCache[ch.id] = ch
+                        channelNameCache[ch.id] = ch.displayName
+                        if (ch.guildId != null) {
+                            channelGuildCache[ch.id] = ch.guildId
+                            scope.launch { refreshGuildChannels(ch.guildId) }
+                        } else if (ch.isDm) {
+                            scope.launch { refreshDmChannels() }
+                        }
+                    }
+
+                    is GatewayEvent.ChannelDelete -> {
+                        val ch = event.channel
+                        channelCache.remove(ch.id)
+                        channelNameCache.remove(ch.id)
+                        channelGuildCache.remove(ch.id)
+                        if (ch.guildId != null) {
+                            scope.launch { refreshGuildChannels(ch.guildId) }
+                        } else if (ch.isDm) {
+                            scope.launch { refreshDmChannels() }
                         }
                     }
 
@@ -612,6 +806,7 @@ class DiscordRepository(token: String, private val context: Context? = null) {
     }.getOrElse { emptyList() }
 
     private fun saveDmChannels(list: List<Channel>) = runCatching {
-        prefs?.edit()?.putString("dm_channels", JSONArray(list.map { it.toJson() }).toString())?.apply()
+        prefs?.edit()?.putString("dm_channels", JSONArray(list.map { it.toJson() }).toString())
+            ?.apply()
     }
 }

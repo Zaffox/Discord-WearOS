@@ -1,0 +1,20 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.zaffox.discordwear.app-mergeReleaseResources-47:/values-v21/values-v21.xml",
+            "map": [
+                {
+                    "source": "/home/owen/.gradle/caches/8.14.5/transforms/2b2e655f497834e1f33a197e2f2904b7/transformed/core-1.15.0/res/values-v21/values-v21.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9,10,13",
+                        "startColumns": "4,4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,173,237,304,368,484,610,736,864,1036",
+                        "endLines": "2,3,4,5,6,7,8,9,12,17",
+                        "endColumns": "117,63,66,63,115,125,125,127,12,12",
+                        "endOffsets": "168,232,299,363,479,605,731,859,1031,1383"
+                    }
+                }
+            ]
+        }
+    ]
+}

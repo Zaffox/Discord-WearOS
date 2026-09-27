@@ -1,10 +1,11 @@
 package com.zaffox.discordwear.screens
 
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -22,25 +23,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.*
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
-import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import coil.request.ImageRequest
 import android.content.Context
@@ -72,14 +88,10 @@ fun ChatScreen(
     val repo = context.discordApp.repository
     val listState = rememberScalingLazyListState()
     val scope = rememberCoroutineScope()
-    val keyboardController = LocalSoftwareKeyboardController.current
     val imageLoader = remember {
         ImageLoader.Builder(context)
             .components {
-                if (android.os.Build.VERSION.SDK_INT >= 28)
-                    add(ImageDecoderDecoder.Factory())
-                else
-                    add(GifDecoder.Factory())
+                add(ImageDecoderDecoder.Factory())
             }.build()
     }
 
@@ -94,12 +106,22 @@ fun ChatScreen(
     var inputText by remember { mutableStateOf("") }
     var pendingText by remember { mutableStateOf("") }
     var replyingTo by remember { mutableStateOf<DiscordMessage?>(null) }
+    var replyPing by remember { mutableStateOf(true) }
     var selectedMsg by remember { mutableStateOf<DiscordMessage?>(null) }
     var reactingToMsg by remember { mutableStateOf<DiscordMessage?>(null) }
     val roleColorCache = remember { mutableStateMapOf<String, GuildRole?>() }
+    val roleIconCache = remember { mutableStateMapOf<String, GuildRole?>() }
+    val guildMemberCache = remember { mutableStateMapOf<String, GuildMember?>() }
+    val roleNames = remember(guildId, loading) { mutableStateMapOf<String, String>() }
     val channelNames = remember(messages.size, loading) { repo.getChannelNames() }
 
-    // Pre-load role data for all visible authors once messages load (guild channels only)
+    LaunchedEffect(guildId, loading) {
+        if (!loading && guildId != null && repo != null) {
+            val roles = repo.getGuildRoles(guildId)
+            roles.forEach { roleNames[it.id] = it.name }
+        }
+    }
+
     LaunchedEffect(messages, guildId, loading) {
         if (!loading && guildId != null) {
             messages
@@ -108,15 +130,20 @@ fun ChatScreen(
                 .filterNot { roleColorCache.containsKey(it) }
                 .forEach { userId ->
                     roleColorCache[userId] = repo?.getTopRoleForUser(guildId, userId)
+                    roleIconCache[userId] = repo?.getRoleWithIconForUser(guildId, userId)
+                }
+            messages
+                .map { it.author.id }
+                .distinct()
+                .filterNot { guildMemberCache.containsKey("$guildId:$it") }
+                .forEach { userId ->
+                    guildMemberCache["$guildId:$userId"] = repo?.getGuildMember(guildId, userId)
                 }
         }
     }
     val currentUser by repo.currentUser.collectAsState()
     val myId = currentUser?.id ?: currentUserId
     val hasNitro = currentUser?.hasNitro ?: false
-    val typingUsers = remember(typingMap, channelId, myId) {
-        (typingMap[channelId] ?: emptySet()).filter { it != myId }
-    }
     val sendAnimatedAsGif = SetupPreferences.getSendAnimatedAsGif(context)
     val spoilerRevealOnTap = remember { SetupPreferences.getSpoilerRevealOnTap(context) }
     val compactMode = remember { SetupPreferences.getCompactMode(context) }
@@ -137,35 +164,44 @@ fun ChatScreen(
 
 
     LaunchedEffect(channelId) {
+        repo?.selectChannel(channelId, guildId)
         scope.launch {
             repo.loadMessages(channelId)
             loading = false
         }
     }
 
+    val initialLastRead = remember(channelId) { readState[channelId]?.lastMessageId }
     val scrolledToUnread = remember { mutableStateOf(false) }
-    LaunchedEffect(messages.size, loading) {//scrolling to last unread message not wokring
+
+    LaunchedEffect(channelId, loading, messages.size, pendingText) {
         if (!loading && !scrolledToUnread.value && messages.isNotEmpty()) {
             scrolledToUnread.value = true
-            val lastRead = readState[channelId]?.lastMessageId
-            if (lastRead != null) {
-                val lastReadIdx = messages.indexOfLast { it.id <= lastRead }
+            val headerOffset = 1 + (if (pendingText.isNotBlank()) 1 else 0)
+            if (initialLastRead != null) {
+                val lastReadIdx = messages.indexOfLast { it.id <= initialLastRead }
                 when {
-                    lastReadIdx >= 0 -> {
-                        scope.launch { listState.animateScrollToItem(lastReadIdx + 1) }
+                    lastReadIdx >= 0 && lastReadIdx + 1 < messages.size -> {
+                        listState.scrollToItem(headerOffset + lastReadIdx + 1)
                     }
+
+                    lastReadIdx >= 0 -> {
+                        listState.scrollToItem(headerOffset + lastReadIdx)
+                    }
+
                     else -> {
-                        scope.launch { listState.animateScrollToItem(1) }
+                        listState.scrollToItem(headerOffset)
                     }
                 }
             } else {
-                scope.launch { listState.animateScrollToItem(messages.size + 1) }
+                listState.scrollToItem(headerOffset)
             }
         }
     }
 
-    LaunchedEffect(messages.size) {
-        if (!loading) {
+    LaunchedEffect(scrolledToUnread.value) {
+        if (scrolledToUnread.value && !loading) {
+            delay(1_500)
             messages.lastOrNull()?.id?.let { repo?.markChannelRead(channelId, it) }
         }
     }
@@ -193,13 +229,21 @@ fun ChatScreen(
     }
 
     fun startRecording() {
-        val hasAudio = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-                PackageManager.PERMISSION_GRANTED
-        if (!hasAudio) { micPermLauncher.launch(Manifest.permission.RECORD_AUDIO); return }
+        val hasAudio =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                    PackageManager.PERMISSION_GRANTED
+        if (!hasAudio) {
+            micPermLauncher.launch(Manifest.permission.RECORD_AUDIO); return
+        }
         try {
             val f = File(context.cacheDir, "voice_${System.currentTimeMillis()}.ogg")
             voiceFile = f
-            val mr = MediaRecorder(context)
+            val mr = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                MediaRecorder(context)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
             mr.setAudioSource(MediaRecorder.AudioSource.MIC)
             mr.setOutputFormat(MediaRecorder.OutputFormat.OGG)
             mr.setAudioEncoder(MediaRecorder.AudioEncoder.OPUS)
@@ -222,7 +266,8 @@ fun ChatScreen(
         try {
             mr.stop()
             mr.release()
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
         recorder = null
         isRecording = false
         scope.launch {
@@ -237,11 +282,28 @@ fun ChatScreen(
 
     fun cancelRecording() {
         val mr = recorder ?: return
-        try { mr.stop(); mr.release() } catch (_: Exception) {}
         recorder = null
+        try {
+            mr.stop(); mr.release()
+        } catch (_: Exception) {
+        }
         isRecording = false
         voiceFile?.delete()
         voiceFile = null
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                cancelRecording()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            cancelRecording()
+        }
     }
 
     LaunchedEffect(isRecording) {
@@ -249,7 +311,9 @@ fun ChatScreen(
             while (isRecording) {
                 delay(1_000)
                 recordingSecs++
-                if (recordingSecs >= 120) { stopAndSendRecording(); break }
+                if (recordingSecs >= 120) {
+                    stopAndSendRecording(); break
+                }
             }
         }
     }
@@ -316,8 +380,17 @@ fun ChatScreen(
                         value = editText,
                         onValueChange = { editText = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Edit", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                        textStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface),
+                        label = {
+                            Text(
+                                "Edit",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        shape = RoundedCornerShape(18.dp),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            lineHeight = 14.sp
+                        ),
                         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                             focusedTextColor = MaterialTheme.colorScheme.onSurface,
                             unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -345,14 +418,18 @@ fun ChatScreen(
                                     }
                                 }
                             },
-                            modifier = Modifier.weight(1f).height(36.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(),
                             enabled = editText.isNotBlank()
                         ) { Text("Save") }
                         Spacer(Modifier.width(8.dp))
                         Button(
                             onClick = { editingMsg = null; editText = "" },
-                            modifier = Modifier.weight(1f).height(36.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp),
                             colors = ButtonDefaults.outlinedButtonColors()
                         ) { Text("Cancel") }
                     }
@@ -395,7 +472,8 @@ fun ChatScreen(
                                 .onFailure { sendError = "Failed: ${it.message}" }
                         }
                     } else {
-                        val newText = if (inputText.isBlank()) insertText else "$inputText$insertText"
+                        val newText =
+                            if (inputText.isBlank()) insertText else "$inputText$insertText"
                         inputText = newText
                         pendingText = newText
                     }
@@ -407,8 +485,11 @@ fun ChatScreen(
                 if (target != null) {
                     val reactionEmoji = ReactionEmoji(id = null, name = unicode, animated = false)
                     scope.launch {
-                        try { repo.toggleReaction(channelId, target.id, reactionEmoji) }
-                        catch (e: Exception) { sendError = "Failed: ${e.message}" }
+                        try {
+                            repo.toggleReaction(channelId, target.id, reactionEmoji)
+                        } catch (e: Exception) {
+                            sendError = "Failed: ${e.message}"
+                        }
                     }
                     reactingToMsg = null
                 } else {
@@ -465,6 +546,7 @@ fun ChatScreen(
                 selectedMsg = null
                 showPicker = true
             },
+
             onOpenThread = if (msgForOptions.threadId != null) {
                 {
                     val tid = msgForOptions.threadId
@@ -489,7 +571,12 @@ fun ChatScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         ScreenScaffold(scrollState = listState) {
             ScalingLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                item(key = "channel_title") { Text("#$channelName", style = MaterialTheme.typography.titleMedium) }
+                item(key = "channel_title") {
+                    Text(
+                        "#$channelName",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
 
                 if (pendingText.isNotBlank()) {
                     item(key = "pending_text") {
@@ -512,10 +599,10 @@ fun ChatScreen(
                                 maxLines = 2
                             )
                             Row {
-                                Text(
-                                    "▶", //set to material send ivcon instead of Unicode
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (slowRemaining > 0)
+                                Icon(
+                                    painter = painterResource(id = R.drawable.play),
+                                    contentDescription = null,
+                                    tint = if (slowRemaining > 0)
                                         MaterialTheme.colorScheme.onSurfaceVariant
                                     else MaterialTheme.colorScheme.primary,
                                     modifier = Modifier
@@ -528,21 +615,33 @@ fun ChatScreen(
                                                 slowRemaining = slowModeSecs
                                                 val replyTarget = replyingTo
                                                 if (replyTarget != null) {
-                                                    repo.sendReply(channelId, text, replyTarget.id)
-                                                        .onFailure { sendError = "Failed: ${it.message}" }
+                                                    repo.sendReply(
+                                                        channelId,
+                                                        text,
+                                                        replyTarget.id,
+                                                        replyPing
+                                                    )
+                                                        .onFailure {
+                                                            sendError = "Failed: ${it.message}"
+                                                        }
                                                     replyingTo = null
+                                                    replyPing = true
                                                 } else {
                                                     repo.sendMessage(channelId, text)
-                                                        .onFailure { sendError = "Failed: ${it.message}" }
+                                                        .onFailure {
+                                                            sendError = "Failed: ${it.message}"
+                                                        }
                                                 }
                                                 while (true) {
                                                     delay(1_000)
-                                                    slowRemaining = repo.slowModeRemainingSeconds(channelId)
+                                                    slowRemaining =
+                                                        repo.slowModeRemainingSeconds(channelId)
                                                     if (slowRemaining <= 0) break
                                                 }
                                             }
                                         }
                                         .padding(horizontal = 6.dp, vertical = 4.dp)
+                                        .size(16.dp),
                                 )
                                 Text(
                                     "X",
@@ -565,6 +664,7 @@ fun ChatScreen(
                     messages.isEmpty() -> item(key = "empty") {
                         Text("No messages yet.", style = MaterialTheme.typography.bodySmall)
                     }
+
                     else -> items(messages.size, key = { messages[it].id }) { index ->
                         val msg = messages[index]
                         val prevMsg = if (index > 0) messages[index - 1] else null
@@ -584,25 +684,30 @@ fun ChatScreen(
 
                         MessageBubble(
                             msg = msg,
-                            isOwn = msg.author.id == myId,
                             isContinuation = isContinuation,
                             imageLoader = imageLoader,
                             channelNames = channelNames,
+                            roleNames = roleNames,
                             compactMode = compactMode,
                             spoilerRevealOnTap = spoilerRevealOnTap,
                             guildId = guildId,
                             roleColorCache = roleColorCache,
+                            roleIconCache = roleIconCache,
+                            guildMemberCache = guildMemberCache,
+                            myId = myId,
                             onReact = { emoji ->
                                 scope.launch { repo.toggleReaction(channelId, msg.id, emoji) }
                             },
-                            onSwipeLeft = {
-                                replyingTo = msg
+                            onSwipeToReply = { msgToReply ->
+                                replyingTo = msgToReply
                             },
                             onLongPress = {
                                 selectedMsg = msg
                             },
                             onAvatarClick = { userId ->
-                                onNavigateToProfile?.invoke(userId, msg.author.takeIf { it.id == userId })
+                                onNavigateToProfile?.invoke(
+                                    userId,
+                                    msg.author.takeIf { it.id == userId })
                             },
                             onOpenThread = if (msg.threadId != null) { threadId ->
                                 val tname = msg.content.take(30).ifBlank { "Thread" }
@@ -614,30 +719,34 @@ fun ChatScreen(
 
                 if (sendError.isNotEmpty()) {
                     item(key = "send_error") {
-                        Text(sendError, color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            sendError, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
 
-                // this BS not worky :(
-                //  val currentTypingUsers = typingMap[channelId].orEmpty().filter { it != myId }
-                //if (currentTypingUsers.isNotEmpty()) {
-                /*  item(key = "typing_indicator") {
-                      val names = currentTypingUsers.mapNotNull { uid -> repo.getDisplayName(uid) }
-                      val label = when {
-                          names.isEmpty() -> "Someone is typing…"
-                          names.size == 1 -> "${names[0]} is typing…"
-                          names.size == 2 -> "${names[0]} and ${names[1]} are typing…"
-                          else            -> "Several people are typing…"
-                      }
-                      Text(
-                          text = label,
-                          style = MaterialTheme.typography.labelSmall,
-                          color = MaterialTheme.colorScheme.onSurfaceVariant,
-                          modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp)
-                      )
-                  }
-              //}*/
+                val currentTypingUsers = typingMap[channelId].orEmpty().filter { it != myId }
+                if (currentTypingUsers.isNotEmpty()) {
+                    item(key = "typing_indicator") {
+                        val names = currentTypingUsers.mapNotNull { uid ->
+                            repo.getDisplayName(uid) ?: "Someone"
+                        }
+                        val label = when {
+                            names.size == 1 -> "${names[0]} is typing…"
+                            names.size == 2 -> "${names[0]} and ${names[1]} are typing…"
+                            else -> "Several people are typing…"
+                        }
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
+                }
 
                 item(key = "text_input") {
                     Column(modifier = Modifier.fillMaxWidth()) {
@@ -653,18 +762,45 @@ fun ChatScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.reply),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
                                 Text(
-                                    "↩ ${replyingTo!!.author.displayName}: ${replyingTo!!.content.take(30)}",
+                                    " ${replyingTo!!.author.displayName}: ${replyingTo!!.content}",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
                                 )
-                                Text(
-                                    "X",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.clickable { replyingTo = null }.padding(4.dp)
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "@",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (replyPing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSecondaryContainer.copy(
+                                            alpha = 0.38f
+                                        ),
+                                        modifier = Modifier
+                                            .clickable { replyPing = !replyPing }
+                                            .padding(4.dp)
+                                    )
+                                    Text(
+                                        "X",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier
+                                            .clickable {
+                                                replyingTo = null; replyPing = true
+                                            }
+                                            .padding(4.dp)
+                                    )
+                                }
                             }
                         }
 
@@ -675,9 +811,22 @@ fun ChatScreen(
                                     inputText = newValue
                                     pendingText = newValue
                                 },
-                                modifier = Modifier.fillMaxWidth(),
-                                placeholder = { Text("Message #$channelName", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                textStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 36.dp, max = 90.dp),
+                                shape = RoundedCornerShape(18.dp),
+                                placeholder = {
+                                    Text(
+                                        "Message #$channelName",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                textStyle = MaterialTheme.typography.bodySmall.copy(
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    lineHeight = 14.sp
+                                ),
                                 colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                                     focusedTextColor = MaterialTheme.colorScheme.onSurface,
                                     unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -692,7 +841,9 @@ fun ChatScreen(
                                 text = "You cannot send messages here",//add lock icon from /res/drawable
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
                             )
                         }
                     }
@@ -702,8 +853,13 @@ fun ChatScreen(
                     if (canSend) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(6.dp),
-                                horizontalArrangement = Arrangement.spacedBy(space = 16.dp, alignment = Alignment.CenterHorizontally)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(
+                                    space = 16.dp,
+                                    alignment = Alignment.CenterHorizontally
+                                )
                             ) {
                                 FilledIconButton(
                                     onClick = {
@@ -711,7 +867,9 @@ fun ChatScreen(
                                         showPicker = true
                                         tab = 0
                                     },
-                                    modifier = Modifier.height(40.dp).width(40.dp),
+                                    modifier = Modifier
+                                        .height(40.dp)
+                                        .width(40.dp),
                                 ) {
                                     Icon(
                                         painter = painterResource(id = R.drawable.emoji),
@@ -724,7 +882,9 @@ fun ChatScreen(
                                         showPicker = true
                                         tab = 1
                                     },
-                                    modifier = Modifier.height(40.dp).width(40.dp),
+                                    modifier = Modifier
+                                        .height(40.dp)
+                                        .width(40.dp),
                                 ) {
                                     Icon(
                                         painter = painterResource(id = R.drawable.sticker),
@@ -741,21 +901,34 @@ fun ChatScreen(
                                             slowRemaining = slowModeSecs
                                             val replyTarget = replyingTo
                                             if (replyTarget != null) {
-                                                repo.sendReply(channelId, text, replyTarget.id)
-                                                    .onFailure { sendError = "Failed: ${it.message}" }
+                                                repo.sendReply(
+                                                    channelId,
+                                                    text,
+                                                    replyTarget.id,
+                                                    replyPing
+                                                )
+                                                    .onFailure {
+                                                        sendError = "Failed: ${it.message}"
+                                                    }
                                                 replyingTo = null
+                                                replyPing = true
                                             } else {
                                                 repo.sendMessage(channelId, text)
-                                                    .onFailure { sendError = "Failed: ${it.message}" }
+                                                    .onFailure {
+                                                        sendError = "Failed: ${it.message}"
+                                                    }
                                             }
                                             while (true) {
                                                 delay(1_000)
-                                                slowRemaining = repo.slowModeRemainingSeconds(channelId)
+                                                slowRemaining =
+                                                    repo.slowModeRemainingSeconds(channelId)
                                                 if (slowRemaining <= 0) break
                                             }
                                         }
                                     },
-                                    modifier = Modifier.height(40.dp).width(40.dp),
+                                    modifier = Modifier
+                                        .height(40.dp)
+                                        .width(40.dp),
                                     enabled = inputText.isNotBlank() && slowRemaining <= 0
                                 ) {
                                     Icon(
@@ -767,8 +940,13 @@ fun ChatScreen(
 
                             if (!isRecording) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().padding(6.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(space = 16.dp, alignment = Alignment.CenterHorizontally)
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(
+                                        space = 16.dp,
+                                        alignment = Alignment.CenterHorizontally
+                                    )
 
                                 ) {
                                     FilledIconButton(
@@ -777,15 +955,18 @@ fun ChatScreen(
                                                 Manifest.permission.READ_MEDIA_IMAGES
                                             else
                                                 Manifest.permission.READ_EXTERNAL_STORAGE
-                                            val hasPerm = ContextCompat.checkSelfPermission(context, perm) ==
-                                                    PackageManager.PERMISSION_GRANTED
+                                            val hasPerm =
+                                                ContextCompat.checkSelfPermission(context, perm) ==
+                                                        PackageManager.PERMISSION_GRANTED
                                             if (hasPerm) {
                                                 showPhotoPicker = true
                                             } else {
                                                 imagePermLauncher.launch(perm)
                                             }
                                         },
-                                        modifier = Modifier.height(40.dp).width(40.dp),
+                                        modifier = Modifier
+                                            .height(40.dp)
+                                            .width(40.dp),
                                     ) {
                                         Icon(
                                             painter = painterResource(id = R.drawable.image),
@@ -794,7 +975,9 @@ fun ChatScreen(
                                     }
                                     FilledIconButton(
                                         onClick = { startRecording() },
-                                        modifier = Modifier.height(40.dp).width(40.dp),
+                                        modifier = Modifier
+                                            .height(40.dp)
+                                            .width(40.dp),
                                     ) {
                                         Icon(
                                             painter = painterResource(id = R.drawable.mic),
@@ -806,7 +989,10 @@ fun ChatScreen(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(8.dp))
+                                        .background(
+                                            MaterialTheme.colorScheme.errorContainer,
+                                            RoundedCornerShape(8.dp)
+                                        )
                                         .padding(horizontal = 8.dp, vertical = 6.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
@@ -824,13 +1010,17 @@ fun ChatScreen(
                                     ) {
                                         Button(
                                             onClick = { cancelRecording() },
-                                            modifier = Modifier.weight(1f).height(34.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(34.dp),
                                             colors = ButtonDefaults.outlinedButtonColors()
                                         ) { Text("Cancel", fontSize = 12.sp) }
                                         Spacer(Modifier.width(6.dp))
                                         Button(
                                             onClick = { stopAndSendRecording() },
-                                            modifier = Modifier.weight(1f).height(34.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(34.dp),
                                             colors = ButtonDefaults.filledTonalButtonColors()
                                         ) { Text("Send", fontSize = 11.sp) }
                                     }
@@ -880,7 +1070,7 @@ private fun SpoilerText(text: String, revealOnTap: Boolean) {
             text = text,
             style = MaterialTheme.typography.bodySmall,
             color = if (revealed) MaterialTheme.colorScheme.onSurface
-            else          MaterialTheme.colorScheme.onSurface.copy(alpha = 0f)
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0f)
         )
         if (!revealed) {
             Text(
@@ -947,10 +1137,17 @@ private fun MessageOptionsDialog(
             item {
                 Button(
                     onClick = onReply,
-                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp),
                     colors = ButtonDefaults.filledTonalButtonColors()
                 ) {
-                    Icon(painter = painterResource(id = R.drawable.reply), contentDescription = null,tint = Color.White, modifier = Modifier.size(16.dp))
+                    Icon(
+                        painter = painterResource(id = R.drawable.reply),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
                     Spacer(Modifier.width(6.dp))
                     Text("Reply")
                 }
@@ -959,11 +1156,17 @@ private fun MessageOptionsDialog(
                 item {
                     Button(
                         onClick = onOpenThread,
-                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
                         colors = ButtonDefaults.filledTonalButtonColors()
                     ) {
-                        Icon(painter = painterResource(id = R.drawable.reply), contentDescription = null,
-                            tint = Color(0xFF5865F2), modifier = Modifier.size(16.dp))
+                        Icon(
+                            painter = painterResource(id = R.drawable.reply),
+                            contentDescription = null,
+                            tint = Color(0xFF5865F2),
+                            modifier = Modifier.size(16.dp)
+                        )
                         Spacer(Modifier.width(6.dp))
                         Text("Open Thread")
                     }
@@ -972,10 +1175,17 @@ private fun MessageOptionsDialog(
             item {
                 Button(
                     onClick = onReact,
-                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp),
                     colors = ButtonDefaults.filledTonalButtonColors()
                 ) {
-                    Icon(painter = painterResource(id = R.drawable.emoji), contentDescription = null,tint = Color.White, modifier = Modifier.size(16.dp))
+                    Icon(
+                        painter = painterResource(id = R.drawable.emoji),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
                     Spacer(Modifier.width(6.dp))
                     Text("React")
                 }
@@ -983,10 +1193,17 @@ private fun MessageOptionsDialog(
             item {
                 Button(
                     onClick = onCopy,
-                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp),
                     colors = ButtonDefaults.filledTonalButtonColors()
                 ) {
-                    Icon(painter = painterResource(id = R.drawable.copy), contentDescription = null,tint = Color.White, modifier = Modifier.size(16.dp))
+                    Icon(
+                        painter = painterResource(id = R.drawable.copy),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
                     Spacer(Modifier.width(6.dp))
                     Text("Copy Text")
                 }
@@ -995,10 +1212,17 @@ private fun MessageOptionsDialog(
                 item {
                     Button(
                         onClick = onEdit,
-                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
                         colors = ButtonDefaults.filledTonalButtonColors()
                     ) {
-                        Icon(painter = painterResource(id = R.drawable.edit), contentDescription = null,tint = Color.White, modifier = Modifier.size(16.dp))
+                        Icon(
+                            painter = painterResource(id = R.drawable.edit),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
                         Spacer(Modifier.width(6.dp))
                         Text("Edit")
                     }
@@ -1006,12 +1230,19 @@ private fun MessageOptionsDialog(
                 item {
                     Button(
                         onClick = onDelete,
-                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.error
                         )
                     ) {
-                        Icon(painter = painterResource(id = R.drawable.delete), contentDescription = null,tint = Color.White, modifier = Modifier.size(16.dp))
+                        Icon(
+                            painter = painterResource(id = R.drawable.delete),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
                         Spacer(Modifier.width(6.dp))
                         Text("Delete")
                     }
@@ -1020,7 +1251,9 @@ private fun MessageOptionsDialog(
             item {
                 Button(
                     onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp),
                     colors = ButtonDefaults.outlinedButtonColors()
                 ) { Text("Cancel") }
             }
@@ -1032,16 +1265,19 @@ private fun MessageOptionsDialog(
 @Composable
 internal fun MessageBubble(
     msg: DiscordMessage,
-    isOwn: Boolean,
     isContinuation: Boolean,
     imageLoader: ImageLoader,
     channelNames: Map<String, String> = emptyMap(),
+    roleNames: Map<String, String> = emptyMap(),
     compactMode: Boolean = false,
     spoilerRevealOnTap: Boolean = true,
     guildId: String? = null,
     roleColorCache: SnapshotStateMap<String, GuildRole?> = mutableStateMapOf(),
+    roleIconCache: SnapshotStateMap<String, GuildRole?> = mutableStateMapOf(),
+    guildMemberCache: SnapshotStateMap<String, GuildMember?> = mutableStateMapOf(),
+    myId: String = "",
     onReact: (ReactionEmoji) -> Unit,
-    onSwipeLeft: () -> Unit,
+    onSwipeToReply: ((DiscordMessage) -> Unit)? = null,
     onLongPress: () -> Unit,
     onAvatarClick: (userId: String) -> Unit = {},
     onOpenThread: ((threadId: String) -> Unit)? = null
@@ -1053,306 +1289,455 @@ internal fun MessageBubble(
         msg.mentionedUsers.associate { it.id to it.displayName }
     }
 
-    // Role data is pre-loaded in ChatScreen for all visible authors
+    val memberRoles = if (guildId != null && repo != null) repo.getMyRoles(guildId) else emptyList()
+    val isMentioned = remember(msg, myId, memberRoles) {
+        myId.isNotBlank() && msg.pingFor(myId, memberRoles)
+    }
+
+    // Role data is preloaded in ChatScreen for all visible authors
     val topRole = if (guildId != null) roleColorCache[msg.author.id] else null
+    val topRoleIcon = if (guildId != null) roleIconCache[msg.author.id] ?: topRole else null
     val rawRoleColor = topRole?.color
     val authorNameColor = if (rawRoleColor != null && rawRoleColor != 0)
         Color(0xFF000000.toInt() or rawRoleColor)
     else
         MaterialTheme.colorScheme.onSurfaceVariant
-    var offsetX by remember { mutableStateOf(0f) }
 
-    Row(
+    val density = LocalDensity.current
+    val view = LocalView.current
+    val haptic = LocalHapticFeedback.current
+    val thresholdPx = remember(density) { with(density) { -48.dp.toPx() } }
+    val maxDragPx = remember(density) { with(density) { -80.dp.toPx() } }
+
+    var isDragging by remember { mutableStateOf(false) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var hasVibrated by remember { mutableStateOf(false) }
+    val animOffset = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+
+    val currentOffset = if (isDragging) dragOffset else animOffset.value
+
+    val swipeModifier = if (onSwipeToReply != null) {
+        Modifier.pointerInput(msg.id) {
+            detectHorizontalDragGestures(
+                onDragStart = {
+                    isDragging = true
+                    dragOffset = 0f
+                    hasVibrated = false
+                },
+                onDragEnd = {
+                    if (dragOffset <= thresholdPx) {
+                        onSwipeToReply(msg)
+                    }
+                    val startVal = dragOffset
+                    isDragging = false
+                    scope.launch {
+                        animOffset.snapTo(startVal)
+                        animOffset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                    }
+                },
+                onDragCancel = {
+                    val startVal = dragOffset
+                    isDragging = false
+                    scope.launch {
+                        animOffset.snapTo(startVal)
+                        animOffset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                    }
+                },
+                onHorizontalDrag = { change, dragAmount ->
+                    if (dragAmount < 0f || dragOffset < 0f) {
+                        val newOffset = (dragOffset + dragAmount).coerceIn(maxDragPx, 0f)
+                        if (newOffset != dragOffset) {
+                            change.consume()
+                            if (dragOffset > thresholdPx && newOffset <= thresholdPx && !hasVibrated) {
+                                if (!view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                }
+                                hasVibrated = true
+                            }
+                            dragOffset = newOffset
+                        }
+                    }
+                }
+            )
+        }
+    } else Modifier
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = if (isContinuation) 0.dp else 4.dp, bottom = 2.dp)
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        if (offsetX < -40f) onSwipeLeft()
-                        offsetX = 0f
-                    },
-                    onHorizontalDrag = { _, delta ->
-                        if (delta < 0) offsetX += delta
-                    }
-                )
-            }
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val down = awaitPointerEvent()
-                        if (down.changes.any { it.pressed }) {
-                            val startPos = down.changes.first().position
-                            val timeout = 500L
-                            val endTime = System.currentTimeMillis() + timeout
-                            var lifted = false
-                            var moved = false
-                            while (System.currentTimeMillis() < endTime) {
-                                val ev = awaitPointerEvent()
-                                if (ev.changes.all { !it.pressed }) {
-                                    lifted = true
-                                    break
-                                }
-                                // Check if pointer moved more than 10dp — if so, it's a scroll/drag
-                                val currentPos = ev.changes.first().position
-                                val distance = (currentPos - startPos).getDistance()
-                                if (distance > 10f * density) {
-                                    moved = true
-                                    break
-                                }
-                            }
-                            if (!lifted && !moved) {
-                                onLongPress()
-                                val ev = awaitPointerEvent()
-                                ev.changes.forEach { it.consume() }
-                            }
-                        }
-                    }
-                }
-            },
-        horizontalArrangement = Arrangement.Start,
-        verticalAlignment = Alignment.Top
+            .then(swipeModifier)
     ) {
-        if (!compactMode && !isContinuation) {
-            DiscordAvatarWithDecoration(
-                user = msg.author,
-                imageLoader = imageLoader,
-                size = 22.dp,
-                onClick = { onAvatarClick(msg.author.id) }
-            )
-            Spacer(Modifier.width(4.dp))
-        } else if (!compactMode) {
-            Spacer(Modifier.width(26.dp))
+        if (onSwipeToReply != null && currentOffset < -2f) {
+            val progress = (abs(currentOffset) / abs(thresholdPx)).coerceIn(0f, 1f)
+            val isPastThreshold = currentOffset <= thresholdPx
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .padding(end = 8.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .graphicsLayer {
+                            alpha = progress
+                            scaleX = 0.6f + (progress * 0.4f)
+                            scaleY = 0.6f + (progress * 0.4f)
+                        }
+                        .background(
+                            if (isPastThreshold) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceContainerHigh,
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.reply),
+                        contentDescription = "Reply",
+                        tint = if (isPastThreshold) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
         }
 
-        Column(
-            horizontalAlignment = Alignment.Start,
-            modifier = Modifier.widthIn(max = 155.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(currentOffset.roundToInt(), 0) }
+                .padding(top = if (isContinuation) 0.dp else 4.dp, bottom = 2.dp)
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = { onLongPress() }
+                ),
+            horizontalArrangement = Arrangement.Start,
+            verticalAlignment = Alignment.Top
         ) {
-            if (!isContinuation) {
-                val timeLabel = remember(msg.timestamp) {
-                    runCatching {
-                        val instant = java.time.OffsetDateTime.parse(msg.timestamp).toInstant()
-                        val zoned = instant.atZone(java.time.ZoneId.systemDefault())
-                        val now = java.time.ZonedDateTime.now()
-                        val use24 = android.text.format.DateFormat.is24HourFormat(context)
-                        val timeFmt = if (use24)
-                            java.time.format.DateTimeFormatter.ofPattern("HH:mm")
-                        else
-                            java.time.format.DateTimeFormatter.ofPattern("h:mma")
-                        val timeStr = zoned.format(timeFmt).lowercase()
+            if (!compactMode && !isContinuation) {
+                DiscordAvatarWithDecoration(
+                    user = msg.author,
+                    imageLoader = imageLoader,
+                    size = 22.dp,
+                    guildId = guildId,
+                    guildMemberCache = guildMemberCache,
+                    onClick = { onAvatarClick(msg.author.id) }
+                )
+                Spacer(Modifier.width(4.dp))
+            } else if (!compactMode) {
+                Spacer(Modifier.width(26.dp))
+            }
 
-                        val todayDate = now.toLocalDate()
-                        val yesterdayDate = todayDate.minusDays(1)
-                        when (zoned.toLocalDate()) {
-                            todayDate     -> timeStr
-                            yesterdayDate -> "Yesterday $timeStr"
-                            else          -> "${zoned.monthValue}/${zoned.dayOfMonth} $timeStr"
+            Column(
+                horizontalAlignment = Alignment.Start,
+                modifier = Modifier
+                    .widthIn(max = 155.dp)
+                    .then(
+                        if (isMentioned) {
+                            Modifier
+                                .background(
+                                    Color(0xFFFEE75C).copy(alpha = 0.25f),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        } else {
+                            Modifier
                         }
-                    }.getOrElse { "" }
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = msg.author.displayName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = authorNameColor
                     )
-                    // Role icon: show only once loaded, unicode emoji takes priority over custom image
-                    if (topRole != null) {
-                        when {
-                            !topRole.unicodeEmoji.isNullOrEmpty() -> {
+            ) {
+                if (!isContinuation) {
+                    val timeLabel = remember(msg.timestamp) {
+                        runCatching {
+                            val instant = java.time.OffsetDateTime.parse(msg.timestamp).toInstant()
+                            val zoned = instant.atZone(java.time.ZoneId.systemDefault())
+                            val now = java.time.ZonedDateTime.now()
+                            val use24 = android.text.format.DateFormat.is24HourFormat(context)
+                            val timeFmt = if (use24)
+                                java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+                            else
+                                java.time.format.DateTimeFormatter.ofPattern("h:mma")
+                            val timeStr = zoned.format(timeFmt).lowercase()
+
+                            val todayDate = now.toLocalDate()
+                            val yesterdayDate = todayDate.minusDays(1)
+                            when (zoned.toLocalDate()) {
+                                todayDate -> timeStr
+                                yesterdayDate -> "Yesterday $timeStr"
+                                else -> "${zoned.monthValue}/${zoned.dayOfMonth} $timeStr"
+                            }
+                        }.getOrElse { "" }
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = msg.author.displayName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = authorNameColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        val clan = msg.author.clan
+                        if (clan != null) {
+                            Row(
+                                modifier = Modifier
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceContainer,
+                                        RoundedCornerShape(4.dp)
+                                    )
+                                    .padding(horizontal = 3.dp, vertical = 1.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                val badgeUrl = clan.badgeUrl(16)
+                                if (badgeUrl != null) {
+                                    SubcomposeAsyncImage(
+                                        model = ImageRequest.Builder(LocalContext.current)
+                                            .data(badgeUrl)
+                                            .crossfade(true)
+                                            .build(),
+                                        imageLoader = imageLoader,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                }
                                 Text(
-                                    text = topRole.unicodeEmoji,
-                                    fontSize = 10.sp
+                                    text = clan.tag,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 8.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            !topRole.iconHash.isNullOrEmpty() -> {
-                                SubcomposeAsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current)
-                                        .data(topRole.iconUrl())
-                                        .crossfade(true)
-                                        .build(),
-                                    contentDescription = null,
-                                    imageLoader = imageLoader,
-                                    modifier = Modifier.size(12.dp),
-                                    loading = { /* Hide while loading */ },
-                                    error = { /* Hide on error */ }
-                                )
+                        }
+                        // Role icon: show only once loaded, unicode emoji takes priority over custom image
+                        if (topRoleIcon != null) {
+                            when {
+                                !topRoleIcon.unicodeEmoji.isNullOrEmpty() -> {
+                                    Text(
+                                        text = topRoleIcon.unicodeEmoji,
+                                        fontSize = 10.sp
+                                    )
+                                }
+
+                                !topRoleIcon.iconHash.isNullOrEmpty() -> {
+                                    SubcomposeAsyncImage(
+                                        model = ImageRequest.Builder(LocalContext.current)
+                                            .data(topRoleIcon.iconUrl())
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = null,
+                                        imageLoader = imageLoader,
+                                        modifier = Modifier.size(12.dp),
+                                        loading = { /* Hide while loading */ },
+                                        error = { /* Hide on error */ }
+                                    )
+                                }
                             }
+                        }
+                        if (timeLabel.isNotEmpty()) {
+                            Text(
+                                text = timeLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                fontSize = 9.sp
+                            )
                         }
                     }
-                    if (timeLabel.isNotEmpty()) {
+                }
+
+                val ref = msg.referencedMessage
+                if (msg.type == 19 && ref != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                                RoundedCornerShape(4.dp)
+                            )
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.reply),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(10.dp)
+                        )
                         Text(
-                            text = timeLabel,
+                            " ${ref.author.displayName}: ",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            ref.content.take(40).ifBlank { "Attachment" },//icon?
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
+                }
+
+                if (msg.forwardedContent != null || msg.forwardedAuthor != null || msg.forwardedAttachments.isNotEmpty() || msg.forwardedEmbeds.isNotEmpty() || msg.forwardedStickers.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Color(0xFF2B2D31),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .padding(6.dp)
+                    ) {
+                        Text(
+                            "Forwarded",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                        val fwdAuthorName = msg.forwardedAuthor?.displayName
+                            ?: msg.referencedMessage?.author?.displayName ?: "Unknown"
+                        Text(
+                            fwdAuthorName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White
+                        )
+                        val fwdText = msg.forwardedContent?.takeIf { it.isNotBlank() }
+                            ?: msg.referencedMessage?.content?.takeIf { it.isNotBlank() }
+                        if (!fwdText.isNullOrBlank()) {
+                            MessageContent(
+                                content = fwdText,
+                                imageLoader = imageLoader,
+                                context = context,
+                                userNames = userNames,
+                                channelNames = channelNames,
+                                roleNames = roleNames,
+                                spoilerRevealOnTap = spoilerRevealOnTap
+                            )
+                        }
+                        val fwdAtts = msg.forwardedAttachments.ifEmpty {
+                            msg.referencedMessage?.attachments ?: emptyList()
+                        }
+                        fwdAtts.filter { it.isImage }.forEach { att ->
+                            MediaImage(att.proxyUrl, att.filename, imageLoader)
+                        }
+                        val fwdEmbeds = msg.forwardedEmbeds.ifEmpty {
+                            msg.referencedMessage?.embeds ?: emptyList()
+                        }
+                        fwdEmbeds.forEach { embed ->
+                            EmbedCard(embed, imageLoader)
+                        }
+                        val fwdStickers = msg.forwardedStickers.ifEmpty {
+                            msg.referencedMessage?.stickers ?: emptyList()
+                        }
+                        fwdStickers.filter { it.isDisplayable }.forEach { s ->
+                            MediaImage(s.imageUrl, s.name, imageLoader, size = 120.dp)
+                        }
+                        if (fwdText.isNullOrBlank() && fwdAtts.isEmpty() && fwdEmbeds.isEmpty() && fwdStickers.isEmpty()) {
+                            Text(
+                                "(no preview available)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    val trimmedContent = msg.content.trim()
+                    val isJustLink = msg.embeds.isNotEmpty() && (
+                            android.util.Patterns.WEB_URL.matcher(trimmedContent).matches() ||
+                                    Regex("^https?://\\S+$").matches(trimmedContent)
+                            )
+
+                    if (msg.content.isNotBlank() && !isJustLink) {
+                        MessageContent(
+                            content = msg.content,
+                            imageLoader = imageLoader,
+                            context = context,
+                            userNames = userNames,
+                            channelNames = channelNames,
+                            roleNames = roleNames,
+                            spoilerRevealOnTap = spoilerRevealOnTap
+                        )
+                    }
+                }
+
+                msg.attachments.filter { it.isImage }.forEach { att ->
+                    MediaImage(att.proxyUrl, att.filename, imageLoader)
+                }
+                msg.attachments.filter { it.isVideo }.forEach { att ->
+                    VideoAttachment(att, imageLoader)
+                }
+                msg.attachments.filter { it.isAudio }.forEach { att ->
+                    AudioAttachment(att)
+                }
+                msg.stickers.filter { it.isDisplayable }.forEach { s ->
+                    MediaImage(s.imageUrl, s.name, imageLoader, size = 80.dp)
+                }
+                msg.embeds
+                    .filter { embed ->
+                        !(embed.type == "link" && //lets clean this up a litle more
+                                embed.url?.contains("cdn.discordapp.com/emojis/") == true)
+                    }
+                    .forEach { embed ->
+                        EmbedCard(embed, imageLoader)
+                    }
+
+                if (msg.reactions.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        msg.reactions.forEach { reaction ->
+                            ReactionChip(reaction = reaction, imageLoader = imageLoader, onClick = {
+                                onReact(reaction.emoji)
+                            })
+                        }
+                    }
+                }
+
+                // Thread count chip
+                if (msg.threadId != null) {
+                    val count = msg.threadMessageCount
+                    Row(
+                        modifier = Modifier
+                            .background(
+                                Color(0xFF5865F2).copy(alpha = 0.15f),
+                                androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+                            )
+                            .clickable { onOpenThread?.invoke(msg.threadId) }
+                            .padding(horizontal = 6.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.reply),
+                            contentDescription = "Thread",
+                            tint = Color(0xFF5865F2),
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Text(
+                            text = if (count > 0) " $count replies" else "Thread",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF5865F2),
                             fontSize = 9.sp
                         )
                     }
                 }
             }
-
-            val ref = msg.referencedMessage
-            if (msg.type == 19 && ref != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                            RoundedCornerShape(4.dp)
-                        )
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "↩ ${ref.author.displayName}: ",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        ref.content.take(40).ifBlank { "Attachment" },//icon?
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1
-                    )
-                }
-                Spacer(Modifier.height(2.dp))
-            }
-
-            if (msg.type == 23) {//fowarded messages are not working :P
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            MaterialTheme.colorScheme.secondaryContainer,
-                            RoundedCornerShape(6.dp)
-                        )
-                        .padding(6.dp)
-                ) {
-                    Text(
-                        "Forwarded",//does not even show this :P
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    val fwdAuthorName = msg.referencedMessage?.author?.displayName ?: "Unknown"
-                    Text(//I blame the bot API
-                        fwdAuthorName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-                    val fwdText = msg.forwardedContent?.takeIf { it.isNotBlank() }
-                        ?: msg.referencedMessage?.content?.takeIf { it.isNotBlank() }
-                    if (!fwdText.isNullOrBlank()) {
-                        MessageContent(
-                            content = fwdText,
-                            imageLoader = imageLoader,
-                            context = context,
-                            userNames = userNames,
-                            channelNames = channelNames,
-                            spoilerRevealOnTap = spoilerRevealOnTap
-                        )
-                    }
-                    val fwdAtts = msg.forwardedAttachments.ifEmpty {
-                        msg.referencedMessage?.attachments ?: emptyList()
-                    }
-                    fwdAtts.filter { it.isImage }.forEach { att ->
-                        MediaImage(att.proxyUrl, att.filename, imageLoader)
-                    }
-                    val fwdEmbeds = msg.forwardedEmbeds.ifEmpty {
-                        msg.referencedMessage?.embeds ?: emptyList()
-                    }
-                    fwdEmbeds.forEach { embed ->
-                        EmbedCard(embed, imageLoader)
-                    }
-                    val fwdStickers = msg.referencedMessage?.stickers ?: emptyList()
-                    fwdStickers.filter { it.isDisplayable }.forEach { s ->
-                        MediaImage(s.imageUrl, s.name, imageLoader, size = 80.dp)
-                    }
-                    if (fwdText.isNullOrBlank() && fwdAtts.isEmpty() && fwdEmbeds.isEmpty() && fwdStickers.isEmpty()) {
-                        Text(
-                            "(no preview available)",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            } else {
-                if (msg.content.isNotBlank()) {
-                    MessageContent(
-                        content = msg.content,
-                        imageLoader = imageLoader,
-                        context = context,
-                        userNames = userNames,
-                        channelNames = channelNames,
-                        spoilerRevealOnTap = spoilerRevealOnTap
-                    )
-                }
-            }
-
-            msg.attachments.filter { it.isImage }.forEach { att ->
-                MediaImage(att.proxyUrl, att.filename, imageLoader)
-            }
-            msg.attachments.filter { it.isVideo }.forEach { att ->
-                VideoAttachment(att, imageLoader)
-            }
-            msg.attachments.filter { it.isAudio }.forEach { att ->
-                AudioAttachment(att)
-            }
-            msg.stickers.filter { it.isDisplayable }.forEach { s ->
-                MediaImage(s.imageUrl, s.name, imageLoader, size = 80.dp)
-            }
-            msg.embeds
-                .filter { embed ->
-                    !(embed.type == "link" && //lets clean this up a litlle more
-                            embed.url?.contains("cdn.discordapp.com/emojis/") == true)
-                }
-                .forEach { embed ->
-                    EmbedCard(embed, imageLoader)
-                }
-
-            if (msg.reactions.isNotEmpty()) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    msg.reactions.forEach { reaction ->
-                        ReactionChip(reaction = reaction, imageLoader = imageLoader, onClick = {
-                            onReact(reaction.emoji)
-                        })
-                    }
-                }
-            }
-
-            // Thread count chip
-            if (msg.threadId != null) {
-                val count = msg.threadMessageCount
-                Row(
-                    modifier = Modifier
-                        .background(
-                            Color(0xFF5865F2).copy(alpha = 0.15f),
-                            androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
-                        )
-                        .clickable { onOpenThread?.invoke(msg.threadId) }
-                        .padding(horizontal = 6.dp, vertical = 3.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.reply),
-                        contentDescription = "Thread",
-                        tint = Color(0xFF5865F2),
-                        modifier = Modifier.size(10.dp)
-                    )
-                    Text(
-                        text = if (count > 0) "$count replies" else "Thread",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF5865F2),
-                        fontSize = 9.sp
-                    )
-                }
-            }
         }
     }
+}
+
+private fun isOnlyEmojis(content: String): Boolean {
+    if (content.isBlank()) return false
+    var cleaned = content.replace(Regex("<a?:\\w+:\\d+>"), "")
+    cleaned = cleaned.replace(
+        Regex("[\\x{1F300}-\\x{1F5FF}\\x{1F600}-\\x{1F64F}\\x{1F680}-\\x{1F6FF}\\x{1F700}-\\x{1F77F}\\x{1F780}-\\x{1F7FF}\\x{1F800}-\\x{1F8FF}\\x{1F900}-\\x{1F9FF}\\x{1FA70}-\\x{1FAFF}\\x{2600}-\\x{26FF}\\x{2700}-\\x{27BF}\\x{FE00}-\\x{FE0F}\\x{1F1E6}-\\x{1F1FF}\\x{200D}\\x{FE0F}]"),
+        ""
+    )
+    cleaned = cleaned.replace(Regex("\\s+"), "")
+    val hasEmoji = content.contains(Regex("<a?:\\w+:\\d+>")) ||
+            content.contains(Regex("[\\x{1F300}-\\x{1F5FF}\\x{1F600}-\\x{1F64F}\\x{1F680}-\\x{1F6FF}\\x{1F700}-\\x{1F77F}\\x{1F780}-\\x{1F7FF}\\x{1F800}-\\x{1F8FF}\\x{1F900}-\\x{1F9FF}\\x{1FA70}-\\x{1FAFF}\\x{2600}-\\x{26FF}\\x{2700}-\\x{27BF}]"))
+    return cleaned.isEmpty() && hasEmoji
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1366,94 +1751,195 @@ private fun MessageContent(
     channelNames: Map<String, String> = emptyMap(),
     spoilerRevealOnTap: Boolean = true
 ) {
-    val parts = remember(content, userNames, roleNames, channelNames) {
-        ContentParser.parse(content, userNames, roleNames, channelNames)
-    }
+    val lines = remember(content) { content.split("\n") }
+    val isOnlyEmoji = remember(content) { isOnlyEmojis(content) }
 
-    FlowRow(modifier = Modifier.fillMaxWidth()) {
-        parts.forEach { part ->
-            when (part) {
-                is ContentParser.Part.PlainText -> {
-                    val spans = ContentParser.parseMarkdown(part.text)
-                    spans.forEach { span ->
-                        if (span.spoiler) {
-                            SpoilerText(span.text, spoilerRevealOnTap)
-                        } else {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        lines.forEach { line ->
+            val trimmed = line.trimStart()
+            val headingLevel = when {
+                trimmed.startsWith("### ") -> 3
+                trimmed.startsWith("## ") -> 2
+                trimmed.startsWith("# ") -> 1
+                else -> 0
+            }
+            val isSubtext = headingLevel == 0 && trimmed.startsWith("-#")
+            val cleanLine = when {
+                headingLevel > 0 -> trimmed.removePrefix("### ").removePrefix("## ")
+                    .removePrefix("# ").trimStart()
+
+                isSubtext -> trimmed.removePrefix("-#").trimStart()
+                else -> line
+            }
+            val parts = remember(cleanLine, userNames, roleNames, channelNames) {
+                ContentParser.parse(cleanLine, userNames, roleNames, channelNames)
+            }
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                parts.forEach { part ->
+                    when (part) {
+                        is ContentParser.Part.PlainText -> {
+                            val spans = ContentParser.parseMarkdown(
+                                part.text,
+                                subtext = isSubtext,
+                                headingLevel = headingLevel
+                            )
+                            spans.forEach { span ->
+                                if (span.spoiler) {
+                                    SpoilerText(span.text, spoilerRevealOnTap)
+                                } else {
+                                    val fontSize = when (span.headingLevel) {
+                                        1 -> 18.sp
+                                        2 -> 15.sp
+                                        3 -> 13.sp
+                                        else -> if (span.subtext) 10.sp else androidx.compose.ui.unit.TextUnit.Unspecified
+                                    }
+                                    val fontWeight =
+                                        if (span.headingLevel > 0 || span.bold) androidx.compose.ui.text.font.FontWeight.Bold else null
+                                    val fontStyle =
+                                        if (span.italic) androidx.compose.ui.text.font.FontStyle.Italic else null
+                                    val textColor = when {
+                                        span.headingLevel > 0 -> MaterialTheme.colorScheme.onSurface
+                                        span.subtext -> MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                            alpha = 0.7f
+                                        )
+
+                                        else -> androidx.compose.ui.graphics.Color.Unspecified
+                                    }
+
+                                    val annotated = buildAnnotatedString {
+                                        val style = SpanStyle(
+                                            fontWeight = fontWeight,
+                                            fontStyle = fontStyle,
+                                            textDecoration = when {
+                                                span.strikethrough -> TextDecoration.LineThrough
+                                                else -> null
+                                            },
+                                            background = if (span.code)
+                                                MaterialTheme.colorScheme.surfaceContainer
+                                            else androidx.compose.ui.graphics.Color.Unspecified,
+                                            fontFamily = if (span.code)
+                                                androidx.compose.ui.text.font.FontFamily.Monospace
+                                            else null,
+                                            fontSize = fontSize,
+                                            color = textColor
+                                        )
+                                        withStyle(style) { append(span.text) }
+                                    }
+                                    val textStyle = when {
+                                        span.headingLevel == 1 -> MaterialTheme.typography.titleMedium.copy(
+                                            fontSize = 18.sp,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                        )
+
+                                        span.headingLevel == 2 -> MaterialTheme.typography.titleSmall.copy(
+                                            fontSize = 15.sp,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                        )
+
+                                        span.headingLevel == 3 -> MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 13.sp,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                        )
+
+                                        span.subtext -> MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                                alpha = 0.7f
+                                            )
+                                        )
+
+                                        isOnlyEmoji -> MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 28.sp,
+                                            lineHeight = 32.sp
+                                        )
+
+                                        else -> MaterialTheme.typography.bodySmall
+                                    }
+                                    Text(text = annotated, style = textStyle)
+                                }
+                            }
+                        }
+
+                        is ContentParser.Part.CustomEmoji -> {
+                            val emojiSize =
+                                if (isOnlyEmoji) 36.dp else if (isSubtext) 14.dp else 18.dp
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(part.url).crossfade(true).build(),
+                                imageLoader = imageLoader,
+                                contentDescription = part.name,
+                                modifier = Modifier.size(emojiSize)
+                            )
+                        }
+
+                        is ContentParser.Part.UserMention -> {
                             val annotated = buildAnnotatedString {
-                                val style = SpanStyle(
-                                    fontWeight = if (span.bold) androidx.compose.ui.text.font.FontWeight.Bold
-                                    else null,
-                                    fontStyle = if (span.italic) androidx.compose.ui.text.font.FontStyle.Italic
-                                    else null,
-                                    textDecoration = when {
-                                        span.strikethrough -> TextDecoration.LineThrough
-                                        else               -> null
-                                    },
-                                    background = if (span.code)
-                                        MaterialTheme.colorScheme.surfaceContainer
-                                    else androidx.compose.ui.graphics.Color.Unspecified,
-                                    fontFamily = if (span.code)
-                                        androidx.compose.ui.text.font.FontFamily.Monospace
-                                    else null
-                                )
-                                withStyle(style) { append(span.text) }
+                                withStyle(
+                                    SpanStyle(
+                                        color = MaterialTheme.colorScheme.primary,
+                                        background = MaterialTheme.colorScheme.primaryContainer,
+                                        fontSize = if (isSubtext) 10.sp else androidx.compose.ui.unit.TextUnit.Unspecified
+                                    )
+                                ) { append("@${part.displayName}") }
                             }
                             Text(text = annotated, style = MaterialTheme.typography.bodySmall)
                         }
-                    }
-                }
-                is ContentParser.Part.CustomEmoji -> {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(part.url).crossfade(true).build(),
-                        imageLoader = imageLoader,
-                        contentDescription = part.name,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                is ContentParser.Part.UserMention -> {
-                    val annotated = buildAnnotatedString {
-                        withStyle(SpanStyle(
-                            color = MaterialTheme.colorScheme.primary,
-                            background = MaterialTheme.colorScheme.primaryContainer
-                        )) { append("@${part.displayName}") }
-                    }
-                    Text(text = annotated, style = MaterialTheme.typography.bodySmall)
-                }
-                is ContentParser.Part.RoleMention -> {
-                    val annotated = buildAnnotatedString {
-                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.tertiary)) {
-                            append("@${part.roleName}")
-                        }
-                    }
-                    Text(text = annotated, style = MaterialTheme.typography.bodySmall)
-                }
-                is ContentParser.Part.ChannelMention -> {
-                    val annotated = buildAnnotatedString {
-                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.secondary)) {
-                            append("#${part.channelName}")
-                        }
-                    }
-                    Text(text = annotated, style = MaterialTheme.typography.bodySmall)
-                }
-                is ContentParser.Part.Link -> {
-                    val annotated = buildAnnotatedString {
-                        withStyle(SpanStyle(
-                            color = MaterialTheme.colorScheme.primary,
-                            textDecoration = TextDecoration.Underline
-                        )) { append(part.url) }
-                    }
-                    Text(
-                        text = annotated,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.clickable {
-                            runCatching {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(part.url))
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(intent)
+
+                        is ContentParser.Part.RoleMention -> {
+                            val annotated = buildAnnotatedString {
+                                withStyle(
+                                    SpanStyle(
+                                        color = MaterialTheme.colorScheme.tertiary,
+                                        fontSize = if (isSubtext) 10.sp else androidx.compose.ui.unit.TextUnit.Unspecified
+                                    )
+                                ) {
+                                    append("@${part.roleName}")
+                                }
                             }
+                            Text(text = annotated, style = MaterialTheme.typography.bodySmall)
                         }
-                    )
+
+                        is ContentParser.Part.ChannelMention -> {
+                            val annotated = buildAnnotatedString {
+                                withStyle(
+                                    SpanStyle(
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        fontSize = if (isSubtext) 10.sp else androidx.compose.ui.unit.TextUnit.Unspecified
+                                    )
+                                ) {
+                                    append("#${part.channelName}")
+                                }
+                            }
+                            Text(text = annotated, style = MaterialTheme.typography.bodySmall)
+                        }
+
+                        is ContentParser.Part.Link -> {
+                            val annotated = buildAnnotatedString {
+                                withStyle(
+                                    SpanStyle(
+                                        color = MaterialTheme.colorScheme.primary,
+                                        textDecoration = TextDecoration.Underline,
+                                        fontSize = if (isSubtext) 10.sp else androidx.compose.ui.unit.TextUnit.Unspecified
+                                    )
+                                ) { append(part.url) }
+                            }
+                            Text(
+                                text = annotated,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.clickable {
+                                    runCatching {
+                                        val intent = Intent(Intent.ACTION_VIEW, part.url.toUri())
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        context.startActivity(intent)
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1462,15 +1948,22 @@ private fun MessageContent(
 
 @Composable
 private fun ReactionChip(reaction: Reaction, imageLoader: ImageLoader, onClick: () -> Unit) {
-    val bgColor = if (reaction.me)
-        MaterialTheme.colorScheme.primaryContainer
-    else
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+    val bgColor = when {
+        reaction.me || reaction.meBurst -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+    }
 
     Box(
         modifier = Modifier
             .height(22.dp)
             .background(color = bgColor, shape = RoundedCornerShape(11.dp))
+            .then(
+                if (reaction.meBurst) Modifier.border(
+                    1.dp,
+                    Color(0xFFFEE75C),
+                    RoundedCornerShape(11.dp)
+                ) else Modifier
+            )
             .clickable { onClick() }
             .padding(horizontal = 6.dp),
         contentAlignment = Alignment.Center
@@ -1507,37 +2000,144 @@ private fun ReactionChip(reaction: Reaction, imageLoader: ImageLoader, onClick: 
 }
 
 @Composable
-private fun MediaImage(url: String, contentDesc: String, imageLoader: ImageLoader, size: Dp = 120.dp) {
+private fun MediaImage(
+    url: String,
+    contentDesc: String,
+    imageLoader: ImageLoader,
+    size: Dp = 120.dp
+) {
     AsyncImage(
         model = ImageRequest.Builder(LocalContext.current)
             .data(url).crossfade(true).build(),
         imageLoader = imageLoader,
         contentDescription = contentDesc,
         contentScale = ContentScale.Fit,
-        modifier = Modifier.padding(top = 2.dp).widthIn(max = size).heightIn(max = size)
+        modifier = Modifier
+            .padding(top = 2.dp)
+            .size(size)
     )
 }
 
 @Composable
 private fun EmbedCard(embed: Embed, imageLoader: ImageLoader) {
-    Column(modifier = Modifier.padding(top = 2.dp)) {
-        embed.title?.let {
-            Text(it, style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(6.dp)
+    )
+    {
+        if (!embed.authorName.isNullOrBlank()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 2.dp)
+            ) {
+                if (!embed.authorIconUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(embed.authorIconUrl).crossfade(true).build(),
+                        imageLoader = imageLoader,
+                        contentDescription = "author icon",
+                        modifier = Modifier
+                            .size(12.dp)
+                            .clip(CircleShape)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                }
+                Text(
+                    embed.authorName,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
-        embed.description?.let {
-            Text(it.take(120), style = MaterialTheme.typography.bodySmall)
+
+        embed.title?.let { titleText ->
+            if (!embed.url.isNullOrBlank()) {
+                val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+                Text(
+                    titleText,
+                    style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.clickable { runCatching { uriHandler.openUri(embed.url) } }
+                )
+            } else {
+                Text(
+                    titleText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
+
+        embed.description?.let { descText ->
+            Spacer(Modifier.height(2.dp))
+            Text(
+                descText,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 11.sp,
+                    lineHeight = 13.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        if (embed.fields.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            embed.fields.forEach { field ->
+                Column(modifier = Modifier.padding(vertical = 1.dp)) {
+                    Text(
+                        field.name,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        field.value,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+
         val imgUrl = embed.displayImageUrl
         if (imgUrl != null) {
+            Spacer(Modifier.height(4.dp))
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(imgUrl).crossfade(true).build(),
                 imageLoader = imageLoader,
-                contentDescription = embed.title ?: "embed",
+                contentDescription = embed.title ?: "embed image",
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.widthIn(max = 140.dp).heightIn(max = 140.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 120.dp)
+                    .clip(RoundedCornerShape(4.dp))
             )
+        }
+
+        if (!embed.footerText.isNullOrBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!embed.footerIconUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(embed.footerIconUrl).crossfade(true).build(),
+                        imageLoader = imageLoader,
+                        contentDescription = "footer icon",
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                }
+                Text(
+                    embed.footerText,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -1552,8 +2152,9 @@ private fun VideoAttachment(att: Attachment, imageLoader: ImageLoader) {
             .heightIn(max = 100.dp)
             .clickable {
                 runCatching {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(att.url))
-                        .setDataAndType(Uri.parse(att.url), att.contentType ?: "video/*")
+                    val urlUri = att.url.toUri()
+                    val intent = Intent(Intent.ACTION_VIEW, urlUri)
+                        .setDataAndType(urlUri, att.contentType ?: "video/*")
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(intent)
                 }
@@ -1577,13 +2178,12 @@ private fun VideoAttachment(att: Attachment, imageLoader: ImageLoader) {
                 .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.35f)),
             contentAlignment = Alignment.Center
         ) {
-            /*Icon(
-                painter = R.drawable.play,
-                contentDescription = "Play",
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier
-            )*/
-            Text("playy")
+            Icon(
+                painter = painterResource(id = R.drawable.play),
+                contentDescription = "play",
+                tint = Color.White,
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
     Text(
@@ -1596,11 +2196,10 @@ private fun VideoAttachment(att: Attachment, imageLoader: ImageLoader) {
 
 @Composable
 private fun AudioAttachment(att: Attachment) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var isPlaying by remember { mutableStateOf(false) }
-    var progress by remember { mutableStateOf(0f) }
+    var progress by remember { mutableFloatStateOf(0f) }
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
 
     DisposableEffect(att.url) {
@@ -1633,7 +2232,7 @@ private fun AudioAttachment(att: Attachment) {
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Icon(
-                painter= painterResource(id = if (isPlaying) R.drawable.pause else R.drawable.play),
+                painter = painterResource(id = if (isPlaying) R.drawable.pause else R.drawable.play),
                 contentDescription = if (isPlaying) "Pause" else "Play",
                 tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier
@@ -1668,7 +2267,9 @@ private fun AudioAttachment(att: Attachment) {
                 )
                 LinearProgressIndicator(
                     progress = { progress },
-                    modifier = Modifier.fillMaxWidth().height(3.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
                 )
             }
         }
@@ -1677,8 +2278,21 @@ private fun AudioAttachment(att: Attachment) {
 
 
 @Composable
-private fun DiscordAvatarWithDecoration(user: com.zaffox.discordwear.api.DiscordUser, imageLoader: ImageLoader, size: Dp, onClick: () -> Unit = {}) {
-    val decorUrl = user.avatarDecorationUrl()
+private fun DiscordAvatarWithDecoration(
+    user: com.zaffox.discordwear.api.DiscordUser,
+    imageLoader: ImageLoader,
+    size: Dp,
+    guildId: String? = null,
+    guildMemberCache: Map<String, GuildMember?> = emptyMap(),
+    onClick: () -> Unit = {}
+) {
+    val memberKey = if (guildId != null) "$guildId:${user.id}" else ""
+    val member = if (guildId != null) guildMemberCache[memberKey] else null
+    val avatarUrl = if (guildId != null && member?.avatarHash != null) member.avatarUrl(
+        guildId,
+        32
+    ) else user.avatarUrl(32)
+    val decorUrl = member?.avatarDecorationUrl() ?: user.avatarDecorationUrl()
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -1688,7 +2302,12 @@ private fun DiscordAvatarWithDecoration(user: com.zaffox.discordwear.api.Discord
                 )
             }
     ) {
-        DiscordAvatar(url = user.avatarUrl(32), displayName = user.displayName, imageLoader = imageLoader, size = size)
+        DiscordAvatar(
+            url = avatarUrl,
+            displayName = user.displayName,
+            imageLoader = imageLoader,
+            size = size
+        )
         if (decorUrl != null) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
@@ -1730,7 +2349,9 @@ private fun DiscordAvatar(url: String?, displayName: String, imageLoader: ImageL
             imageLoader = imageLoader,
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier =Modifier.size(size).clip(CircleShape),
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape),
             error = {
                 Box(
                     modifier = Modifier

@@ -20,7 +20,7 @@ class DiscordRestClient(private val token: String) {
         .writeTimeout(10, TimeUnit.SECONDS)
         .build()
 
-private val baseUrl = "https://discord.com/api/v9";
+    private val baseUrl = "https://discord.com/api/v9"
     private val jsonMime = "application/json; charset=utf-8".toMediaType()
 
     private fun buildRequest(path: String): Request.Builder =
@@ -43,9 +43,11 @@ private val baseUrl = "https://discord.com/api/v9";
         execute(buildRequest(path).get().build())
 
     private suspend fun post(path: String, body: JSONObject): String =
-        execute(buildRequest(path)
-            .post(body.toString().toRequestBody(jsonMime))
-            .build())
+        execute(
+            buildRequest(path)
+                .post(body.toString().toRequestBody(jsonMime))
+                .build()
+        )
 
     private suspend fun delete(path: String): String =
         execute(buildRequest(path).delete().build())
@@ -62,11 +64,16 @@ private val baseUrl = "https://discord.com/api/v9";
         GuildMember.fromJson(JSONObject(get("/guilds/$guildId/members/@me")))
     }
 
-    suspend fun getGuildMemberRoles(guildId: String, userId: String): Result<List<String>> = runCatching {
-        val member = JSONObject(get("/guilds/$guildId/members/$userId"))
-        val arr = member.getJSONArray("roles")
-        (0 until arr.length()).map { arr.getString(it) }
+    suspend fun getGuildMember(guildId: String, userId: String): Result<GuildMember> = runCatching {
+        GuildMember.fromJson(JSONObject(get("/guilds/$guildId/members/$userId")))
     }
+
+    suspend fun getGuildMemberRoles(guildId: String, userId: String): Result<List<String>> =
+        runCatching {
+            val member = JSONObject(get("/guilds/$guildId/members/$userId"))
+            val arr = member.getJSONArray("roles")
+            (0 until arr.length()).map { arr.getString(it) }
+        }
 
     suspend fun getGuildRoles(guildId: String): Result<List<GuildRole>> = runCatching {
         val guild = JSONObject(get("/guilds/$guildId"))
@@ -86,7 +93,13 @@ private val baseUrl = "https://discord.com/api/v9";
         val roles = getGuildRoles(guildId).getOrNull()
 
         fun canView(channel: Channel): Boolean {
+            val overwrites = channel.permissionOverwrites
+            val everyoneOw = overwrites.firstOrNull { it.type == 0 && it.id == guildId }
+            if (everyoneOw != null && (everyoneOw.deny and Permissions.VIEW_CHANNEL) != 0L) {
+                if (member == null || roles == null) return false
+            }
             if (member == null || roles == null) return true
+
             val perms = Permissions.effectiveForMember(
                 member = member,
                 guildId = guildId,
@@ -113,7 +126,12 @@ private val baseUrl = "https://discord.com/api/v9";
                 .map { it.copy(hasAccess = canView(it)) }
                 .filter { !filterInaccessible || it.hasAccess }
                 .sortedBy { it.position }
-            if (children.isNotEmpty()) groups.add(CategoryGroup(category = cat, channels = children))
+            if (children.isNotEmpty()) groups.add(
+                CategoryGroup(
+                    category = cat,
+                    channels = children
+                )
+            )
         }
 
         groups
@@ -123,54 +141,34 @@ private val baseUrl = "https://discord.com/api/v9";
         Channel.listFromJson(JSONArray(get("/users/@me/channels"))).filter { it.isDm }
     }
 
-    suspend fun getMessages(channelId: String, limit: Int = 50): Result<List<DiscordMessage>> = runCatching {
-        val safe = limit.coerceIn(1, 100)
-        DiscordMessage.listFromJson(JSONArray(get("/channels/$channelId/messages?limit=$safe")))
-    }
-
-    suspend fun sendMessage(channelId: String, content: String): Result<DiscordMessage> = runCatching {
-        val body = JSONObject().put("content", content)
-        DiscordMessage.fromJson(JSONObject(post("/channels/$channelId/messages", body)))
-    }
-
-    suspend fun sendGifAttachment(channelId: String, gifUrl: String): Result<DiscordMessage> = runCatching {
-        withContext(Dispatchers.IO) {
-            // Fetch GIF bytes from Discord CDN
-            val gifBytes = http.newCall(Request.Builder().url(gifUrl).build()).execute()
-                .use { it.body?.bytes() } ?: throw IOException("Failed to fetch GIF")
-
-            val payloadJson = JSONObject()
-                .put("attachments", org.json.JSONArray().put(
-                    JSONObject().put("id", 0).put("filename", "emoji.gif")
-                ))
-                .toString()
-
-            val multipart = MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart("payload_json", null,
-                    payloadJson.toRequestBody("application/json".toMediaType()))
-                .addFormDataPart("files[0]", "emoji.gif",
-                    gifBytes.toRequestBody("image/gif".toMediaType()))
-                .build()
-
-            val request = buildRequest("/channels/$channelId/messages").post(multipart).build()
-            val responseText = http.newCall(request).execute().use { resp ->
-                val text = resp.body?.string() ?: throw IOException("Empty response")
-                if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}: $text")
-                text
-            }
-            DiscordMessage.fromJson(JSONObject(responseText))
+    suspend fun getMessages(channelId: String, limit: Int = 50): Result<List<DiscordMessage>> =
+        runCatching {
+            val safe = limit.coerceIn(1, 100)
+            DiscordMessage.listFromJson(JSONArray(get("/channels/$channelId/messages?limit=$safe")))
         }
-    }
 
-    suspend fun sendReply(channelId: String, content: String, replyToId: String): Result<DiscordMessage> = runCatching {
+    suspend fun sendMessage(channelId: String, content: String): Result<DiscordMessage> =
+        runCatching {
+            val body = JSONObject().put("content", content)
+            DiscordMessage.fromJson(JSONObject(post("/channels/$channelId/messages", body)))
+        }
+
+
+    suspend fun sendReply(
+        channelId: String,
+        content: String,
+        replyToId: String,
+        ping: Boolean = true
+    ): Result<DiscordMessage> = runCatching {
         val body = JSONObject()
             .put("content", content)
-            .put("message_reference", JSONObject()
-                .put("message_id", replyToId)
-                .put("channel_id", channelId)
-                .put("fail_if_not_exists", false)
+            .put(
+                "message_reference", JSONObject()
+                    .put("message_id", replyToId)
+                    .put("channel_id", channelId)
+                    .put("fail_if_not_exists", false)
             )
+            .put("allowed_mentions", JSONObject().put("replied_user", ping))
         DiscordMessage.fromJson(JSONObject(post("/channels/$channelId/messages", body)))
     }
 
@@ -179,7 +177,11 @@ private val baseUrl = "https://discord.com/api/v9";
         Unit
     }
 
-    suspend fun editMessage(channelId: String, messageId: String, newContent: String): Result<DiscordMessage> = runCatching {
+    suspend fun editMessage(
+        channelId: String,
+        messageId: String,
+        newContent: String
+    ): Result<DiscordMessage> = runCatching {
         val body = JSONObject().put("content", newContent)
         val req = buildRequest("/channels/$channelId/messages/$messageId")
             .method("PATCH", body.toString().toRequestBody(jsonMime))
@@ -187,12 +189,6 @@ private val baseUrl = "https://discord.com/api/v9";
         DiscordMessage.fromJson(JSONObject(execute(req)))
     }
 
-    suspend fun sendTyping(channelId: String) {
-        runCatching {
-            execute(buildRequest("/channels/$channelId/typing")
-                .post("".toRequestBody(jsonMime)).build())
-        }
-    }
 
     suspend fun getGuildEmojis(guildId: String): Result<List<GuildEmoji>> = runCatching {
         GuildEmoji.listFromJson(JSONArray(get("/guilds/$guildId/emojis")))
@@ -203,10 +199,11 @@ private val baseUrl = "https://discord.com/api/v9";
         (0 until arr.length()).map { StickerItem.fromJson(arr.getJSONObject(it)) }
     }
 
-    suspend fun sendSticker(channelId: String, stickerId: String): Result<DiscordMessage> = runCatching {
-        val body = JSONObject().put("sticker_ids", org.json.JSONArray().put(stickerId))
-        DiscordMessage.fromJson(JSONObject(post("/channels/$channelId/messages", body)))
-    }
+    suspend fun sendSticker(channelId: String, stickerId: String): Result<DiscordMessage> =
+        runCatching {
+            val body = JSONObject().put("sticker_ids", org.json.JSONArray().put(stickerId))
+            DiscordMessage.fromJson(JSONObject(post("/channels/$channelId/messages", body)))
+        }
 
     suspend fun sendFileAttachment(
         channelId: String,
@@ -218,17 +215,23 @@ private val baseUrl = "https://discord.com/api/v9";
         withContext(Dispatchers.IO) {
             val payloadJson = JSONObject()
                 .put("content", caption)
-                .put("attachments", org.json.JSONArray().put(
-                    JSONObject().put("id", 0).put("filename", filename)
-                ))
+                .put(
+                    "attachments", org.json.JSONArray().put(
+                        JSONObject().put("id", 0).put("filename", filename)
+                    )
+                )
                 .toString()
 
             val multipart = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
-                .addFormDataPart("payload_json", null,
-                    payloadJson.toRequestBody("application/json".toMediaType()))
-                .addFormDataPart("files[0]", filename,
-                    fileBytes.toRequestBody(mimeType.toMediaType()))
+                .addFormDataPart(
+                    "payload_json", null,
+                    payloadJson.toRequestBody("application/json".toMediaType())
+                )
+                .addFormDataPart(
+                    "files[0]", filename,
+                    fileBytes.toRequestBody(mimeType.toMediaType())
+                )
                 .build()
 
             val request = buildRequest("/channels/$channelId/messages").post(multipart).build()
@@ -249,22 +252,28 @@ private val baseUrl = "https://discord.com/api/v9";
     ): Result<DiscordMessage> = runCatching {
         withContext(Dispatchers.IO) {
             val payloadJson = JSONObject()
-                .put("flags", 8192) 
-                .put("attachments", org.json.JSONArray().put(
-                    JSONObject()
-                        .put("id", 0)
-                        .put("filename", "voice-message.ogg")
-                        .put("duration_secs", durationSecs)
-                        .put("waveform", waveform)
-                ))
+                .put("flags", 8192)
+                .put(
+                    "attachments", org.json.JSONArray().put(
+                        JSONObject()
+                            .put("id", 0)
+                            .put("filename", "voice-message.ogg")
+                            .put("duration_secs", durationSecs)
+                            .put("waveform", waveform)
+                    )
+                )
                 .toString()
 
             val multipart = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
-                .addFormDataPart("payload_json", null,
-                    payloadJson.toRequestBody("application/json".toMediaType()))
-                .addFormDataPart("files[0]", "voice-message.ogg",
-                    audioBytes.toRequestBody("audio/ogg".toMediaType()))
+                .addFormDataPart(
+                    "payload_json", null,
+                    payloadJson.toRequestBody("application/json".toMediaType())
+                )
+                .addFormDataPart(
+                    "files[0]", "voice-message.ogg",
+                    audioBytes.toRequestBody("audio/ogg".toMediaType())
+                )
                 .build()
 
             val request = buildRequest("/channels/$channelId/messages").post(multipart).build()
@@ -277,17 +286,33 @@ private val baseUrl = "https://discord.com/api/v9";
         }
     }
 
-    suspend fun addReaction(channelId: String, messageId: String, emojiKey: String): Result<Unit> = runCatching {
+    suspend fun addReaction(
+        channelId: String,
+        messageId: String,
+        emojiKey: String,
+        burst: Boolean = false
+    ): Result<Unit> = runCatching {
         val encoded = java.net.URLEncoder.encode(emojiKey, "UTF-8")
-        execute(buildRequest("/channels/$channelId/messages/$messageId/reactions/$encoded/@me")
-            .put("".toRequestBody(jsonMime)).build())
+        val typeParam = if (burst) "?type=1" else ""
+        execute(
+            buildRequest("/channels/$channelId/messages/$messageId/reactions/$encoded/@me$typeParam")
+                .put("".toRequestBody(jsonMime)).build()
+        )
         Unit
     }
 
-    suspend fun removeReaction(channelId: String, messageId: String, emojiKey: String): Result<Unit> = runCatching {
+    suspend fun removeReaction(
+        channelId: String,
+        messageId: String,
+        emojiKey: String,
+        burst: Boolean = false
+    ): Result<Unit> = runCatching {
         val encoded = java.net.URLEncoder.encode(emojiKey, "UTF-8")
-        execute(buildRequest("/channels/$channelId/messages/$messageId/reactions/$encoded/@me")
-            .delete().build())
+        val typeParam = if (burst) "?type=1" else ""
+        execute(
+            buildRequest("/channels/$channelId/messages/$messageId/reactions/$encoded/@me$typeParam")
+                .delete().build()
+        )
         Unit
     }
 
@@ -308,25 +333,10 @@ private val baseUrl = "https://discord.com/api/v9";
     suspend fun getUserProfile(userId: String): Result<DiscordUser> = runCatching {
         val json = JSONObject(get("/users/$userId/profile"))
         val userObj = json.optJSONObject("user") ?: json
-        DiscordUser.fromJson(userObj)
+        DiscordUser.fromJson(userObj, json)
     }
 
-    suspend fun createDmChannel(userId: String): Result<Channel> = runCatching { //This may require a Captcha and flag account for spam, be careful
-        val body = JSONObject().put("recipient_id", userId)
-        Channel.fromJson(JSONObject(post("/users/@me/channels", body)))
-    }
 
-    suspend fun getThreadMessages(threadId: String, limit: Int = 50): Result<List<DiscordMessage>> =
-        getMessages(threadId, limit)
-
-    suspend fun getActiveThreads(channelId: String): Result<List<Channel>> = runCatching {
-        val json = JSONObject(get("/channels/$channelId/threads/archived/public?limit=25"))
-        val arr = json.optJSONArray("threads") ?: return@runCatching emptyList()
-        (0 until arr.length()).map { Channel.fromJson(arr.getJSONObject(it)) }
-    }
-    suspend fun getThreadForMessage(channelId: String, messageId: String): Result<Channel> = runCatching {
-        Channel.fromJson(JSONObject(get("/channels/$channelId/messages/$messageId/thread")))
-    }
 }
 
 class DiscordApiException(val httpCode: Int, message: String) :

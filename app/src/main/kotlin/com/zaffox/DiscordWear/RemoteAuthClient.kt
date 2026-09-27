@@ -17,24 +17,22 @@ import javax.crypto.spec.OAEPParameterSpec
 import javax.crypto.spec.PSource
 
 private const val DISCORD_UA =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-
-// Minimal x-super-properties — base64 of a JSON object matching a web client
+    "Mozilla/5.0 (Wayland; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.2.0.2 Firefox/156.0.1"
 private val SUPER_PROPERTIES: String by lazy {
     val json = JSONObject()
-        .put("os", "Windows")
+        .put("os", "Linux") //Android is based of Linux so make it as close as possible
         .put("browser", "Chrome")
-        .put("device", "")
+        .put("device", "WearOS")
         .put("system_locale", "en-US")
         .put("browser_user_agent", DISCORD_UA)
-        .put("browser_version", "124.0.0.0")
-        .put("os_version", "10")
+        .put("browser_version", "151.2.0.2")
+        .put("os_version", "")
         .put("referrer", "")
         .put("referring_domain", "")
         .put("referrer_current", "")
         .put("referring_domain_current", "")
         .put("release_channel", "stable")
-        .put("client_build_number", 9999)
+        .put("client_build_number", "621195")
         .put("client_event_source", JSONObject.NULL)
         .toString()
     Base64.encodeToString(json.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
@@ -43,7 +41,10 @@ private val SUPER_PROPERTIES: String by lazy {
 sealed class RemoteAuthState {
     object Connecting : RemoteAuthState()
     data class WaitingForScan(val fingerprint: String) : RemoteAuthState()
-    data class UserScanned(val userId: String, val username: String, val avatarHash: String) : RemoteAuthState()
+    data class UserScanned(val userId: String, val username: String, val avatarHash: String) :
+        RemoteAuthState()
+
+    object CaptchaRequired : RemoteAuthState()
     object Canceled : RemoteAuthState()
     data class Error(val message: String) : RemoteAuthState()
 }
@@ -59,7 +60,7 @@ class RemoteAuthClient(
 ) {
     private val TAG = "RemoteAuthClient"
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val ioScope   = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var ws: WebSocket? = null
     private var heartbeatJob: Job? = null
 
@@ -72,13 +73,15 @@ class RemoteAuthClient(
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
 
-private val oaepSpec = OAEPParameterSpec(
+    private val oaepSpec = OAEPParameterSpec(
         "SHA-256", "MGF1", MGF1ParameterSpec.SHA256, PSource.PSpecified.DEFAULT
     )
 
     private var status = RemoteAuthStatus()
 
-    private fun setState(s: RemoteAuthState) { mainScope.launch { onStateChange(s) } }
+    private fun setState(s: RemoteAuthState) {
+        mainScope.launch { onStateChange(s) }
+    }
 
     private fun log(line: String) {
         Log.d(TAG, line)
@@ -99,15 +102,18 @@ private val oaepSpec = OAEPParameterSpec(
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 log("Connected (HTTP ${response.code})")
             }
+
             override fun onMessage(webSocket: WebSocket, text: String) {
                 Log.d(TAG, "<<< $text")
                 ioScope.launch { handleMessage(text) }
             }
+
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 log("Failed (HTTP ${response?.code}): ${t.message}")
                 setState(RemoteAuthState.Error("Connection failed: ${t.message}"))
                 cleanup()
             }
+
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 log("Closed: $code ${reason.ifBlank { "(no reason)" }}")
                 if (code != 1000) setState(RemoteAuthState.Error("Disconnected ($code)"))
@@ -130,42 +136,67 @@ private val oaepSpec = OAEPParameterSpec(
                 startHeartbeat(intervalMs)
                 log("→ init sent, waiting for nonce_proof…")
             }
+
             "nonce_proof" -> {
                 log("← nonce_proof, decrypting…")
                 val encryptedNonce = json.getString("encrypted_nonce")
                 val decryptedNonce = decryptBytes(Base64.decode(encryptedNonce, Base64.DEFAULT))
-                val proof = Base64.encodeToString(decryptedNonce, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+                val proof = Base64.encodeToString(
+                    decryptedNonce,
+                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+                )
                 log("Nonce decrypted (${decryptedNonce.size}B), proof=${proof.take(16)}…")
                 send(JSONObject().put("op", "nonce_proof").put("nonce", proof))
                 log("→ nonce_proof sent, waiting for pending_remote_init…")
             }
+
             "pending_remote_init" -> {
                 val fingerprint = json.getString("fingerprint")
                 log("← pending_remote_init!")
                 val spki = publicKeySpki!!
                 val digest = MessageDigest.getInstance("SHA-256").digest(spki)
-                val computed = Base64.encodeToString(digest, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+                val computed = Base64.encodeToString(
+                    digest,
+                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+                )
                 log("Fingerprint match: ${fingerprint == computed}")
                 if (fingerprint != computed) {
                     log("Expected: $fingerprint / Got: $computed")
                 }
                 setState(RemoteAuthState.WaitingForScan(fingerprint))
             }
+
             "pending_ticket" -> {
                 log("← pending_ticket, decrypting user…")
-                val payload = decryptBytes(Base64.decode(json.getString("encrypted_user_payload"), Base64.DEFAULT))
+                val payload = decryptBytes(
+                    Base64.decode(
+                        json.getString("encrypted_user_payload"),
+                        Base64.DEFAULT
+                    )
+                )
                     .toString(Charsets.UTF_8)
                 val parts = payload.split(":")
                 if (parts.size >= 4) {
                     log("User: ${parts[3]}")
-                    setState(RemoteAuthState.UserScanned(userId = parts[0], avatarHash = parts[2], username = parts[3]))
+                    setState(
+                        RemoteAuthState.UserScanned(
+                            userId = parts[0],
+                            avatarHash = parts[2],
+                            username = parts[3]
+                        )
+                    )
                 }
             }
+
             "pending_login" -> {
                 log("← pending_login, exchanging ticket…")
                 exchangeTicketForToken(json.getString("ticket"))
             }
-            "cancel" -> { log("← cancel"); setState(RemoteAuthState.Canceled) }
+
+            "cancel" -> {
+                log("← cancel"); setState(RemoteAuthState.Canceled)
+            }
+
             "heartbeat_ack" -> log("← heartbeat_ack")
             else -> log("← unknown op: $op")
         }
@@ -183,10 +214,21 @@ private val oaepSpec = OAEPParameterSpec(
         return cipher.doFinal(cipherBytes)
     }
 
-    private suspend fun exchangeTicketForToken(ticket: String) {
+    private suspend fun exchangeTicketForToken(
+        ticket: String,
+        captchaKey: String? = null,
+        captchaRqToken: String? = null
+    ) {
         try {
-            val body = JSONObject().put("ticket", ticket).toString()
-                .toRequestBody("application/json; charset=utf-8".toMediaType())
+            val jsonBody = JSONObject().put("ticket", ticket)
+            if (captchaKey != null) {
+                jsonBody.put("captcha_key", captchaKey)
+            }
+            if (captchaRqToken != null) {
+                jsonBody.put("captcha_rqtoken", captchaRqToken)
+            }
+            val body =
+                jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
             val request = Request.Builder()
                 .url("https://discord.com/api/v9/users/@me/remote-auth/login")
                 .post(body)
@@ -199,9 +241,20 @@ private val oaepSpec = OAEPParameterSpec(
             val response = withContext(Dispatchers.IO) { http.newCall(request).execute() }
             val responseBody = response.body?.string() ?: throw Exception("Empty response")
             log("Ticket exchange HTTP ${response.code}: $responseBody")
+
+            if (response.code == 400) {
+                val jsonRes = runCatching { JSONObject(responseBody) }.getOrNull()
+                if (jsonRes != null && jsonRes.optString("captcha_service") == "hcaptcha") {
+                    log("hCaptcha required! Captcha verification is not supported on Wear OS.")
+                    setState(RemoteAuthState.CaptchaRequired)
+                    return
+                }
+            }
+
             if (!response.isSuccessful) throw Exception("HTTP ${response.code}: $responseBody")
             val encryptedToken = JSONObject(responseBody).getString("encrypted_token")
-            val token = decryptBytes(Base64.decode(encryptedToken, Base64.DEFAULT)).toString(Charsets.UTF_8)
+            val token =
+                decryptBytes(Base64.decode(encryptedToken, Base64.DEFAULT)).toString(Charsets.UTF_8)
             log("Token decrypted! Logging in…")
             withContext(Dispatchers.Main) { onTokenReceived(token) }
         } catch (e: Exception) {

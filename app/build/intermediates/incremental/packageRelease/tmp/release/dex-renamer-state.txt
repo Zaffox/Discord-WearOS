@@ -1,0 +1,4 @@
+#Sat Sep 26 20:54:52 CDT 2026
+base.0=/home/owen/Discord-WearOS/app/build/intermediates/dex/release/minifyReleaseWithR8/classes.dex
+path.0=classes.dex
+renamed.0=classes.dex

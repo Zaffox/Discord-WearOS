@@ -15,12 +15,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.*
 import coil.ImageLoader
-import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import com.zaffox.discordwear.R
 import com.zaffox.discordwear.api.DiscordMessage
@@ -64,10 +64,7 @@ fun ThreadScreen(
 
     val imageLoader = remember {
         ImageLoader.Builder(context).components {
-            if (android.os.Build.VERSION.SDK_INT >= 28)
-                add(ImageDecoderDecoder.Factory())
-            else
-                add(GifDecoder.Factory())
+            add(ImageDecoderDecoder.Factory())
         }.build()
     }
 
@@ -82,6 +79,7 @@ fun ThreadScreen(
     var pendingText by remember { mutableStateOf("") }
     var selectedMsg by remember { mutableStateOf<DiscordMessage?>(null) }
     var replyingTo by remember { mutableStateOf<DiscordMessage?>(null) }
+    var replyPing by remember { mutableStateOf(true) }
     var reactingToMsg by remember { mutableStateOf<DiscordMessage?>(null) }
     var showPicker by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf(0) }
@@ -315,7 +313,9 @@ fun ThreadScreen(
                 }
                 item {
                     Button(onClick = { replyingTo = msgForOptions; selectedMsg = null },
-                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
                         colors = ButtonDefaults.filledTonalButtonColors()) {
                         Icon(painter = painterResource(id = R.drawable.reply),
                             contentDescription = null, tint = Color.White,
@@ -330,7 +330,9 @@ fun ThreadScreen(
                             as android.content.ClipboardManager
                         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("message", msgForOptions.content))
                         selectedMsg = null
-                    }, modifier = Modifier.fillMaxWidth().height(36.dp),
+                    }, modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp),
                         colors = ButtonDefaults.filledTonalButtonColors()) {
                         Icon(painter = painterResource(id = R.drawable.copy),
                             contentDescription = null, tint = Color.White,
@@ -347,7 +349,9 @@ fun ThreadScreen(
                                     .onFailure { sendError = "Delete failed" }
                             }
                             selectedMsg = null
-                        }, modifier = Modifier.fillMaxWidth().height(36.dp),
+                        }, modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.error)) {
                             Icon(painter = painterResource(id = R.drawable.delete),
@@ -360,7 +364,9 @@ fun ThreadScreen(
                 }
                 item {
                     Button(onClick = { selectedMsg = null },
-                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
                         colors = ButtonDefaults.outlinedButtonColors()) { Text("Cancel") }
                 }
             }
@@ -399,16 +405,18 @@ fun ThreadScreen(
 
                     MessageBubble(
                         msg = msg,
-                        isOwn = msg.author.id == myId,
                         isContinuation = isContinuation,
                         imageLoader = imageLoader,
                         channelNames = channelNames,
                         guildId = guildId,
                         roleColorCache = roleColorCache,
+                        myId = myId,
                         onReact = { emoji ->
                             scope.launch { repo.toggleReaction(threadId, msg.id, emoji) }
                         },
-                        onSwipeLeft = { replyingTo = msg },
+                        onSwipeToReply = { msgToReply ->
+                            replyingTo = msgToReply
+                        },
                         onLongPress = { selectedMsg = msg },
                         onAvatarClick = { userId ->
                             onNavigateToProfile?.invoke(userId, msg.author.takeIf { it.id == userId })
@@ -429,20 +437,41 @@ fun ThreadScreen(
             item(key = "reply_banner") {
                 if (replyingTo != null) {
                     Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.secondaryContainer,
-                                RoundedCornerShape(8.dp))
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.secondaryContainer,
+                                RoundedCornerShape(8.dp)
+                            )
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("↩ ${replyingTo!!.author.displayName}: ${replyingTo!!.content.take(30)}",
+                        Icon(painter = painterResource(id = R.drawable.reply), contentDescription = null,tint = Color.White, modifier = Modifier.size(10.dp))
+                        Text(" ${replyingTo!!.author.displayName}: ${replyingTo!!.content}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f))
-                        Text("X", style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.clickable { replyingTo = null }.padding(4.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "@",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (replyPing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.38f),
+                                modifier = Modifier
+                                    .clickable { replyPing = !replyPing }
+                                    .padding(4.dp)
+                            )
+                            Text("X", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier
+                                    .clickable { replyingTo = null; replyPing = true }
+                                    .padding(4.dp))
+                        }
                     }
                 }
             }
@@ -453,7 +482,15 @@ fun ThreadScreen(
                     value = inputText,
                     onValueChange = { inputText = it; pendingText = it },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Reply in thread", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    shape = RoundedCornerShape(18.dp),
+                    placeholder = {
+                        Text(
+                            "Reply in thread",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
                     textStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface),
                     colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                         focusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -467,7 +504,9 @@ fun ThreadScreen(
 
             item(key = "action_buttons") {
                 Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Row(modifier = Modifier.fillMaxWidth().padding(6.dp),
+                    Row(modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(6.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)) {
                         FilledIconButton(
                             onClick = {
@@ -500,9 +539,10 @@ fun ThreadScreen(
                                 scope.launch {
                                     val replyTarget = replyingTo
                                     if (replyTarget != null) {
-                                        repo.sendReply(threadId, text, replyTarget.id)
+                                        repo.sendReply(threadId, text, replyTarget.id, replyPing)
                                             .onFailure { sendError = "Failed: ${it.message}" }
                                         replyingTo = null
+                                        replyPing = true
                                     } else {
                                         repo.sendMessage(threadId, text)
                                             .onFailure { sendError = "Failed: ${it.message}" }
@@ -519,7 +559,9 @@ fun ThreadScreen(
 
                     if (!isRecording) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(6.dp),
                             horizontalArrangement = Arrangement.spacedBy(space = 16.dp, alignment = Alignment.CenterHorizontally)
                         ) {
                             FilledIconButton(
@@ -536,7 +578,9 @@ fun ThreadScreen(
                                         imagePermLauncher.launch(perm)
                                     }
                                 },
-                                modifier = Modifier.height(40.dp).width(40.dp),
+                                modifier = Modifier
+                                    .height(40.dp)
+                                    .width(40.dp),
                             ) {
                                 Icon(
                                     painter = painterResource(id = R.drawable.image),
@@ -545,7 +589,9 @@ fun ThreadScreen(
                             }
                             FilledIconButton(
                                 onClick = { startRecording() },
-                                modifier = Modifier.height(40.dp).width(40.dp),
+                                modifier = Modifier
+                                    .height(40.dp)
+                                    .width(40.dp),
                             ) {
                                 Icon(
                                     painter = painterResource(id = R.drawable.mic),
@@ -557,7 +603,10 @@ fun ThreadScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(8.dp))
+                                .background(
+                                    MaterialTheme.colorScheme.errorContainer,
+                                    RoundedCornerShape(8.dp)
+                                )
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
@@ -575,13 +624,17 @@ fun ThreadScreen(
                             ) {
                                 Button(
                                     onClick = { cancelRecording() },
-                                    modifier = Modifier.weight(1f).height(34.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(34.dp),
                                     colors = ButtonDefaults.outlinedButtonColors()
                                 ) { Text("Cancel", fontSize = 12.sp) }
                                 Spacer(Modifier.width(6.dp))
                                 Button(
                                     onClick = { stopAndSendRecording() },
-                                    modifier = Modifier.weight(1f).height(34.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(34.dp),
                                     colors = ButtonDefaults.filledTonalButtonColors()
                                 ) { Text("Send", fontSize = 11.sp) }
                             }

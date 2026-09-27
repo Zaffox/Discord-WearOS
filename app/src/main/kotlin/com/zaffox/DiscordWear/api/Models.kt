@@ -3,6 +3,28 @@ package com.zaffox.discordwear.api
 import org.json.JSONArray
 import org.json.JSONObject
 
+data class DiscordClan(
+    val tag: String,
+    val badge: String?,
+    val identityGuildId: String?
+) {
+    fun badgeUrl(size: Int = 16): String? =
+        if (badge != null && identityGuildId != null)
+            "https://cdn.discordapp.com/clan-badges/$identityGuildId/$badge.png?size=$size"
+        else null
+
+    companion object {
+        fun fromJson(o: JSONObject?): DiscordClan? {
+            if (o == null) return null
+            val tag = o.optString("tag").takeIf { it.isNotEmpty() && it != "null" } ?: return null
+            val badge = o.optString("badge").takeIf { it.isNotEmpty() && it != "null" }
+            val identityGuildId =
+                o.optString("identity_guild_id").takeIf { it.isNotEmpty() && it != "null" }
+            return DiscordClan(tag, badge, identityGuildId)
+        }
+    }
+}
+
 data class DiscordUser(
     val id: String,
     val username: String,
@@ -13,7 +35,11 @@ data class DiscordUser(
     val nameplateAsset: String? = null,
     val avatarDecorationSkuId: String? = null,
     val bannerHash: String? = null,
-    val bio: String? = null
+    val bio: String? = null,
+    val pronouns: String? = null,
+    val badges: List<String> = emptyList(),
+    val publicFlags: Int = 0,
+    val clan: DiscordClan? = null
 ) {
     val hasNitro: Boolean get() = premiumType > 0
     val displayName: String get() = globalName ?: username
@@ -38,42 +64,116 @@ data class DiscordUser(
         else null
 
     companion object {
-        fun fromJson(o: JSONObject) = DiscordUser(
-            id = o.getString("id"),
-            username = o.optString("username").takeIf { it.isNotEmpty() && it != "null" } ?: "Unknown",
-            discriminator = o.optString("discriminator", "0"),
-            globalName = o.optString("global_name").takeIf { it.isNotEmpty() && it != "null" },
-            avatarHash = o.optString("avatar").takeIf   { it.isNotEmpty() && it != "null" },
-            premiumType = o.optInt("premium_type", 0),
-            nameplateAsset = o.optJSONObject("collectibles")
-                ?.optJSONObject("nameplate")
-                ?.optString("sku_id")
-                ?.takeIf { it.isNotEmpty() && it != "null" }
-                ?: o.optString("nameplate_asset").takeIf { it.isNotEmpty() && it != "null" },
-            avatarDecorationSkuId =
-                o.optJSONObject("collectibles")
-                    ?.optJSONObject("avatar_decoration")
-                    ?.optString("sku_id")?.takeIf { it.isNotEmpty() && it != "null" }
-                    ?: o.optJSONObject("avatar_decoration_data")
-                        ?.optString("sku_id")?.takeIf { it.isNotEmpty() && it != "null" },
-            bannerHash = o.optString("banner").takeIf { it.isNotEmpty() && it != "null" },
-            bio = o.optString("bio").takeIf { it.isNotEmpty() && it != "null" }
+        private val flagBadgeMap = mapOf(
+            0 to "5e7183e244b7d3419965d1d6159f802e",
+            1 to "17842d9f1e626bc659b86278ceb15579",
+            2 to "bf01d1073934cad147225824c1e40fb9",
+            3 to "271cacdad67f8cb290b396906209b552",
+            6 to "8a88d63323d471975e54d805001c27ab",
+            7 to "011942ebb3dcb2858b9d5c41036f04c6",
+            8 to "3aa41de486fa12454bf371c8fcf0a650",
+            9 to "642d99dc29fa03e1c6cd79c0944062dc",
+            14 to "8f58cc8671f11c8d00e77637a6b7b3b4",
+            17 to "6f34351a7b3c209c1b79361a9b2c3427",
+            18 to "fee59f481c3c86127bcfb2bf60117d91",
+            22 to "6bdc42827a38498926a4b1e8e025ecb1"
         )
+
+        private val badgeIdToAsset = mapOf(
+            "hypesquad_bravery" to "8a88d63323d471975e54d805001c27ab",
+            "hypesquad_brilliance" to "011942ebb3dcb2858b9d5c41036f04c6",
+            "hypesquad_balance" to "3aa41de486fa12454bf371c8fcf0a650",
+            "hypesquad" to "8a88d63323d471975e54d805001c27ab",
+            "early_supporter" to "642d99dc29fa03e1c6cd79c0944062dc",
+            "active_developer" to "6bdc42827a38498926a4b1e8e025ecb1",
+            "bug_hunter" to "271cacdad67f8cb290b396906209b552",
+            "verified_developer" to "6f34351a7b3c209c1b79361a9b2c3427",
+            "nitro" to "2b512c0199d7a224a18018bf03b71f3a",
+            "booster" to "5123d9178fa73da8a7b35520e7d58f3c"
+        )
+
+        fun fromJson(o: JSONObject, profileJson: JSONObject? = null): DiscordUser {
+            val userProfile = profileJson?.optJSONObject("user_profile")
+            val pronouns =
+                userProfile?.optString("pronouns")?.takeIf { it.isNotEmpty() && it != "null" }
+                    ?: o.optString("pronouns").takeIf { it.isNotEmpty() && it != "null" }
+            val badgesArr = profileJson?.optJSONArray("badges") ?: o.optJSONArray("badges")
+            val badgeUrls = mutableListOf<String>()
+            if (badgesArr != null) {
+                for (i in 0 until badgesArr.length()) {
+                    val item = badgesArr.opt(i)
+                    val assetId = if (item is JSONObject) {
+                        item.optString("icon").takeIf { it.isNotEmpty() && it != "null" }
+                            ?: badgeIdToAsset[item.optString("id")]
+                            ?: item.optString("id")
+                    } else {
+                        val s = item.toString()
+                        badgeIdToAsset[s] ?: s
+                    }
+                    if (!assetId.isNullOrEmpty()) {
+                        val url = "https://discordapp.com/assets/$assetId.svg"
+                        if (url !in badgeUrls) badgeUrls.add(url)
+                    }
+                }
+            }
+
+            val flags = o.optInt("public_flags", o.optInt("flags", 0))
+            flagBadgeMap.forEach { (bit, assetId) ->
+                if ((flags and (1 shl bit)) != 0) {
+                    val url = "https://discordapp.com/assets/$assetId.svg"
+                    if (url !in badgeUrls) badgeUrls.add(url)
+                }
+            }
+
+            val premiumType = o.optInt("premium_type", 0)
+            if (premiumType > 0) {
+                val nitroUrl = "https://discordapp.com/assets/2b512c0199d7a224a18018bf03b71f3a.svg"
+                if (nitroUrl !in badgeUrls) badgeUrls.add(nitroUrl)
+            }
+
+            val clan = DiscordClan.fromJson(
+                o.optJSONObject("clan") ?: profileJson?.optJSONObject("clan")
+                ?: userProfile?.optJSONObject("clan")
+            )
+
+            return DiscordUser(
+                id = o.getString("id"),
+                username = o.optString("username").takeIf { it.isNotEmpty() && it != "null" }
+                    ?: "Unknown",
+                discriminator = o.optString("discriminator", "0"),
+                globalName = o.optString("global_name").takeIf { it.isNotEmpty() && it != "null" },
+                avatarHash = o.optString("avatar").takeIf { it.isNotEmpty() && it != "null" },
+                premiumType = premiumType,
+                nameplateAsset = o.optJSONObject("collectibles")
+                    ?.optJSONObject("nameplate")
+                    ?.optString("sku_id")
+                    ?.takeIf { it.isNotEmpty() && it != "null" }
+                    ?: o.optString("nameplate_asset").takeIf { it.isNotEmpty() && it != "null" },
+                avatarDecorationSkuId =
+                    o.optJSONObject("collectibles")
+                        ?.optJSONObject("avatar_decoration")
+                        ?.optString("sku_id")?.takeIf { it.isNotEmpty() && it != "null" }
+                        ?: o.optJSONObject("avatar_decoration_data")
+                            ?.optString("sku_id")?.takeIf { it.isNotEmpty() && it != "null" },
+                bannerHash = o.optString("banner").takeIf { it.isNotEmpty() && it != "null" },
+                bio = userProfile?.optString("bio")?.takeIf { it.isNotEmpty() && it != "null" }
+                    ?: o.optString("bio").takeIf { it.isNotEmpty() && it != "null" },
+                pronouns = pronouns,
+                badges = badgeUrls,
+                publicFlags = flags,
+                clan = clan
+            )
+        }
     }
 }
 
 enum class OnlineStatus { ONLINE, IDLE, DND, INVISIBLE, OFFLINE }
 
-data class UserProfile(
-    val user: DiscordUser,
-    val mutualGuilds: List<String> = emptyList(),
-    val dmChannelId: String? = null
-)
 
 data class ClientStatus(
     val desktop: OnlineStatus? = null,
-    val mobile:  OnlineStatus? = null,
-    val web:     OnlineStatus? = null
+    val mobile: OnlineStatus? = null,
+    val web: OnlineStatus? = null
 )
 
 data class UserPresence(
@@ -108,16 +208,19 @@ data class UserPresence(
                 for (i in 0 until activities.length()) {
                     val act = activities.getJSONObject(i)
                     if (act.optInt("type") == 4) {
-                        customText = act.optString("state").takeIf { it.isNotEmpty() && it != "null" }
+                        customText =
+                            act.optString("state").takeIf { it.isNotEmpty() && it != "null" }
                         val emojiObj = act.optJSONObject("emoji")
                         customEmoji = if (emojiObj != null) {
-                            val eid = emojiObj.optString("id").takeIf { it.isNotEmpty() && it != "null" }
+                            val eid =
+                                emojiObj.optString("id").takeIf { it.isNotEmpty() && it != "null" }
                             if (eid != null) {
                                 val animated = emojiObj.optBoolean("animated", false)
                                 val ext = if (animated) "gif" else "webp"
                                 "https://cdn.discordapp.com/emojis/$eid.$ext?size=16"
                             } else {
-                                emojiObj.optString("name").takeIf { it.isNotEmpty() && it != "null" }
+                                emojiObj.optString("name")
+                                    .takeIf { it.isNotEmpty() && it != "null" }
                             }
                         } else null
                         break
@@ -128,7 +231,6 @@ data class UserPresence(
         }
     }
 }
-
 
 
 data class Guild(
@@ -157,9 +259,10 @@ data class Guild(
         fun fromJson(o: JSONObject) = Guild(
             id = o.getString("id"),
             name = o.getString("name"),
-            iconHash = o.optString("icon").takeIf   { it.isNotEmpty() && it != "null" },
+            iconHash = o.optString("icon").takeIf { it.isNotEmpty() && it != "null" },
             bannerHash = o.optString("banner").takeIf { it.isNotEmpty() && it != "null" }
         )
+
         fun listFromJson(arr: JSONArray): List<Guild> =
             (0 until arr.length()).map { fromJson(arr.getJSONObject(it)) }
     }
@@ -168,7 +271,10 @@ data class Guild(
 enum class ChannelType(val code: Int) {
     GUILD_TEXT(0), DM(1), GUILD_VOICE(2), GROUP_DM(3),
     GUILD_CATEGORY(4), GUILD_NEWS(5), UNKNOWN(-1);
-    companion object { fun from(code: Int) = entries.firstOrNull { it.code == code } ?: UNKNOWN }
+
+    companion object {
+        fun from(code: Int) = entries.firstOrNull { it.code == code } ?: UNKNOWN
+    }
 }
 
 data class PermissionOverwrite(
@@ -182,21 +288,45 @@ data class PermissionOverwrite(
             id = o.getString("id"),
             type = o.getInt("type"),
             allow = o.getString("allow").toLongOrNull() ?: 0L,
-            deny = o.getString("deny").toLongOrNull()  ?: 0L
+            deny = o.getString("deny").toLongOrNull() ?: 0L
         )
     }
 }
 
 data class GuildMember(
     val userId: String,
-    val roleIds: List<String>
+    val roleIds: List<String>,
+    val avatarHash: String? = null,
+    val avatarDecorationSkuId: String? = null
 ) {
+    fun avatarUrl(guildId: String, size: Int = 64): String? =
+        if (avatarHash != null)
+            "https://cdn.discordapp.com/guilds/$guildId/users/$userId/avatars/$avatarHash.png?size=$size"
+        else null
+
+    fun avatarDecorationUrl(): String? =
+        if (avatarDecorationSkuId != null)
+            "https://cdn.discordapp.com/media/v1/collectibles-shop/${avatarDecorationSkuId}/static"
+        else null
+
     companion object {
         fun fromJson(o: JSONObject): GuildMember {
-            val user = o.getJSONObject("user")
-            val rolesArr = o.getJSONArray("roles")
-            val roles = (0 until rolesArr.length()).map { rolesArr.getString(it) }
-            return GuildMember(userId = user.getString("id"), roleIds = roles)
+            val user = o.optJSONObject("user")
+            val userId = user?.optString("id") ?: o.optString("user_id", "")
+            val rolesArr = o.optJSONArray("roles")
+            val roles =
+                if (rolesArr != null) (0 until rolesArr.length()).map { rolesArr.getString(it) } else emptyList()
+            val avatarHash = o.optString("avatar").takeIf { it.isNotEmpty() && it != "null" }
+            val decorSkuId = o.optJSONObject("avatar_decoration_data")?.optString("sku_id")
+                ?.takeIf { it.isNotEmpty() && it != "null" }
+                ?: o.optJSONObject("avatar_decoration")?.optString("sku_id")
+                    ?.takeIf { it.isNotEmpty() && it != "null" }
+            return GuildMember(
+                userId = userId,
+                roleIds = roles,
+                avatarHash = avatarHash,
+                avatarDecorationSkuId = decorSkuId
+            )
         }
     }
 }
@@ -223,6 +353,7 @@ data class GuildRole(
             unicodeEmoji = o.optString("unicode_emoji").takeIf { it.isNotEmpty() && it != "null" },
             iconHash = o.optString("icon").takeIf { it.isNotEmpty() && it != "null" }
         )
+
         fun listFromJson(arr: JSONArray): List<GuildRole> =
             (0 until arr.length()).map { fromJson(arr.getJSONObject(it)) }
     }
@@ -253,7 +384,7 @@ object Permissions {
         var roleDeny = 0L
         var roleAllow = 0L
         for (ow in overwrites.filter { it.type == 0 && it.id in member.roleIds }) {
-            roleDeny = roleDeny  or ow.deny
+            roleDeny = roleDeny or ow.deny
             roleAllow = roleAllow or ow.allow
         }
         perms = (perms and roleDeny.inv()) or roleAllow
@@ -281,9 +412,8 @@ data class Channel(
     val hasAccess: Boolean = true,
     val slowModeSeconds: Int = 0
 ) {
-    val isDm: Boolean       get() = type == ChannelType.DM || type == ChannelType.GROUP_DM
-    val isText: Boolean     get() = type == ChannelType.GUILD_TEXT || type == ChannelType.GUILD_NEWS
-    val isVoice: Boolean    get() = type == ChannelType.GUILD_VOICE
+    val isDm: Boolean get() = type == ChannelType.DM || type == ChannelType.GROUP_DM
+    val isText: Boolean get() = type == ChannelType.GUILD_TEXT || type == ChannelType.GUILD_NEWS
     val isCategory: Boolean get() = type == ChannelType.GUILD_CATEGORY
 
     val displayName: String
@@ -319,7 +449,13 @@ data class Channel(
         fun fromJson(o: JSONObject): Channel {
             val recipientsArr = o.optJSONArray("recipients")
             val recipients = if (recipientsArr != null)
-                (0 until recipientsArr.length()).map { DiscordUser.fromJson(recipientsArr.getJSONObject(it)) }
+                (0 until recipientsArr.length()).map {
+                    DiscordUser.fromJson(
+                        recipientsArr.getJSONObject(
+                            it
+                        )
+                    )
+                }
             else emptyList()
 
             val owArr = o.optJSONArray("permission_overwrites")
@@ -347,6 +483,7 @@ data class Channel(
                 hasAccess = o.optBoolean("has_access", true)
             )
         }
+
         fun listFromJson(arr: JSONArray): List<Channel> =
             (0 until arr.length()).map { fromJson(arr.getJSONObject(it)) }
     }
@@ -366,17 +503,26 @@ data class Attachment(
     val width: Int?,
     val height: Int?
 ) {
-    val isImage: Boolean get() = contentType?.startsWith("image/") == true
-            || filename.lowercase().let { it.endsWith(".png") || it.endsWith(".jpg")
-            || it.endsWith(".jpeg") || it.endsWith(".gif") || it.endsWith(".webp") }
+    val isImage: Boolean
+        get() = contentType?.startsWith("image/") == true
+                || filename.lowercase().let {
+            it.endsWith(".png") || it.endsWith(".jpg")
+                    || it.endsWith(".jpeg") || it.endsWith(".gif") || it.endsWith(".webp")
+        }
 
-    val isVideo: Boolean get() = contentType?.startsWith("video/") == true
-            || filename.lowercase().let { it.endsWith(".mp4") || it.endsWith(".mov")
-            || it.endsWith(".webm") || it.endsWith(".mkv") || it.endsWith(".avi") }
+    val isVideo: Boolean
+        get() = contentType?.startsWith("video/") == true
+                || filename.lowercase().let {
+            it.endsWith(".mp4") || it.endsWith(".mov")
+                    || it.endsWith(".webm") || it.endsWith(".mkv") || it.endsWith(".avi")
+        }
 
-    val isAudio: Boolean get() = contentType?.startsWith("audio/") == true
-            || filename.lowercase().let { it.endsWith(".mp3") || it.endsWith(".ogg")
-            || it.endsWith(".wav") || it.endsWith(".flac") || it.endsWith(".m4a") }
+    val isAudio: Boolean
+        get() = contentType?.startsWith("audio/") == true
+                || filename.lowercase().let {
+            it.endsWith(".mp3") || it.endsWith(".ogg")
+                    || it.endsWith(".wav") || it.endsWith(".flac") || it.endsWith(".m4a")
+        }
 
     companion object {
         fun fromJson(o: JSONObject) = Attachment(
@@ -401,7 +547,10 @@ data class Embed(
     val thumbnailUrl: String?,
     val videoUrl: String?,
     val authorName: String?,
-    val footerText: String?
+    val authorIconUrl: String?,
+    val footerText: String?,
+    val footerIconUrl: String?,
+    val fields: List<EmbedField> = emptyList()
 ) {
     val displayImageUrl: String? get() = imageUrl ?: thumbnailUrl
 
@@ -413,13 +562,37 @@ data class Embed(
             url = o.optString("url").takeIf { it.isNotEmpty() },
             color = if (o.has("color")) o.getInt("color") else null,
             imageUrl = o.optJSONObject("image")?.optString("url")?.takeIf { it.isNotEmpty() },
-            thumbnailUrl = o.optJSONObject("thumbnail")?.optString("url")?.takeIf { it.isNotEmpty() },
+            thumbnailUrl = o.optJSONObject("thumbnail")?.optString("url")
+                ?.takeIf { it.isNotEmpty() },
             videoUrl = o.optJSONObject("video")?.optString("url")?.takeIf { it.isNotEmpty() },
             authorName = o.optJSONObject("author")?.optString("name")?.takeIf { it.isNotEmpty() },
-            footerText = o.optJSONObject("footer")?.optString("text")?.takeIf { it.isNotEmpty() }
+            authorIconUrl = o.optJSONObject("author")?.optString("icon_url")
+                ?.takeIf { it.isNotEmpty() },
+            footerText = o.optJSONObject("footer")?.optString("text")?.takeIf { it.isNotEmpty() },
+            footerIconUrl = o.optJSONObject("footer")?.optString("icon_url")
+                ?.takeIf { it.isNotEmpty() },
+            fields = run {
+                val arr = o.optJSONArray("fields")
+                if (arr != null) {
+                    (0 until arr.length()).mapNotNull { i ->
+                        val f = arr.optJSONObject(i) ?: return@mapNotNull null
+                        val name =
+                            f.optString("name").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                        val value = f.optString("value").takeIf { it.isNotEmpty() }
+                            ?: return@mapNotNull null
+                        EmbedField(name, value, f.optBoolean("inline", false))
+                    }
+                } else emptyList()
+            }
         )
     }
 }
+
+data class EmbedField(
+    val name: String,
+    val value: String,
+    val inline: Boolean
+)
 
 data class StickerItem(
     val id: String,
@@ -427,14 +600,15 @@ data class StickerItem(
     val formatType: Int
 ) {
     val isDisplayable: Boolean get() = formatType in listOf(1, 2, 3)
-    val imageUrl: String get() {
-        val ext = when (formatType) {
-            2 -> "gif"
-            3 -> "json"
-            else -> "png"
+    val imageUrl: String
+        get() {
+            val ext = when (formatType) {
+                2 -> "gif"
+                3 -> "json"
+                else -> "png"
+            }
+            return "https://media.discordapp.net/stickers/$id.$ext?size=240"
         }
-        return "https://media.discordapp.net/stickers/$id.$ext?size=80"
-    }
 
     fun toJson(): JSONObject = JSONObject()
         .put("id", id)
@@ -472,14 +646,27 @@ object ContentParser {
         val italic: Boolean = false,
         val strikethrough: Boolean = false,
         val code: Boolean = false,
-        val spoiler: Boolean = false
+        val spoiler: Boolean = false,
+        val subtext: Boolean = false,
+        val headingLevel: Int = 0
     )
 
-    fun parseMarkdown(text: String): List<MarkdownSpan> {
-        if (text.isBlank()) return listOf(MarkdownSpan(text))
+    fun parseMarkdown(
+        text: String,
+        subtext: Boolean = false,
+        headingLevel: Int = 0
+    ): List<MarkdownSpan> {
+        if (text.isBlank()) return listOf(
+            MarkdownSpan(
+                text,
+                subtext = subtext,
+                headingLevel = headingLevel
+            )
+        )
         val spans = mutableListOf<MarkdownSpan>()
         val regex = Regex(
-            """(\*\*(.+?)\*\*)""" +
+            """(\*\*\*(.+?)\*\*\*)""" +
+                    """|(\*\*(.+?)\*\*)""" +
                     """|(\*(.+?)\*)""" +
                     """|(~~(.+?)~~)""" +
                     """|(```.+?```)|(`(.+?)`)""" +
@@ -490,22 +677,80 @@ object ContentParser {
         var cursor = 0
         for (match in regex.findAll(text)) {
             if (match.range.first > cursor) {
-                spans += MarkdownSpan(text.substring(cursor, match.range.first))
+                spans += MarkdownSpan(
+                    text.substring(cursor, match.range.first),
+                    subtext = subtext,
+                    headingLevel = headingLevel
+                )
             }
             val raw = match.value
             when {
-                raw.startsWith("**") -> spans += MarkdownSpan(match.groupValues[2], bold = true)
-                raw.startsWith("*") -> spans += MarkdownSpan(match.groupValues[4], italic = true)
-                raw.startsWith("~~") -> spans += MarkdownSpan(match.groupValues[6], strikethrough = true)
-                raw.startsWith("```") -> spans += MarkdownSpan(raw.removeSurrounding("```"), code = true)
-                raw.startsWith("`") -> spans += MarkdownSpan(match.groupValues[9], code = true)
-                raw.startsWith("||") -> spans += MarkdownSpan(match.groupValues[11], spoiler = true)
-                raw.startsWith("__") -> spans += MarkdownSpan(match.groupValues[13], bold = true)
-                else -> spans += MarkdownSpan(raw)
+                raw.startsWith("***") -> spans += MarkdownSpan(
+                    match.groupValues[2],
+                    bold = true,
+                    italic = true,
+                    subtext = subtext,
+                    headingLevel = headingLevel
+                )
+
+                raw.startsWith("**") -> spans += MarkdownSpan(
+                    match.groupValues[4],
+                    bold = true,
+                    subtext = subtext,
+                    headingLevel = headingLevel
+                )
+
+                raw.startsWith("*") -> spans += MarkdownSpan(
+                    match.groupValues[6],
+                    italic = true,
+                    subtext = subtext,
+                    headingLevel = headingLevel
+                )
+
+                raw.startsWith("~~") -> spans += MarkdownSpan(
+                    match.groupValues[8],
+                    strikethrough = true,
+                    subtext = subtext,
+                    headingLevel = headingLevel
+                )
+
+                raw.startsWith("```") -> spans += MarkdownSpan(
+                    raw.removeSurrounding("```"),
+                    code = true,
+                    subtext = subtext,
+                    headingLevel = headingLevel
+                )
+
+                raw.startsWith("`") -> spans += MarkdownSpan(
+                    match.groupValues[11],
+                    code = true,
+                    subtext = subtext,
+                    headingLevel = headingLevel
+                )
+
+                raw.startsWith("||") -> spans += MarkdownSpan(
+                    match.groupValues[13],
+                    spoiler = true,
+                    subtext = subtext,
+                    headingLevel = headingLevel
+                )
+
+                raw.startsWith("__") -> spans += MarkdownSpan(
+                    match.groupValues[15],
+                    bold = true,
+                    subtext = subtext,
+                    headingLevel = headingLevel
+                )
+
+                else -> spans += MarkdownSpan(raw, subtext = subtext, headingLevel = headingLevel)
             }
             cursor = match.range.last + 1
         }
-        if (cursor < text.length) spans += MarkdownSpan(text.substring(cursor))
+        if (cursor < text.length) spans += MarkdownSpan(
+            text.substring(cursor),
+            subtext = subtext,
+            headingLevel = headingLevel
+        )
         return spans.filter { it.text.isNotEmpty() }
     }
 
@@ -519,8 +764,8 @@ object ContentParser {
 
     fun parse(
         content: String,
-        userNames:    Map<String, String> = emptyMap(),
-        roleNames:    Map<String, String> = emptyMap(),
+        userNames: Map<String, String> = emptyMap(),
+        roleNames: Map<String, String> = emptyMap(),
         channelNames: Map<String, String> = emptyMap()
     ): List<Part> {
         if (content.isBlank()) return emptyList()
@@ -537,23 +782,32 @@ object ContentParser {
                     val inner = token.removeSurrounding("<", ">").trimStart('a', ':').trimStart(':')
                     val segments = inner.split(":")
                     if (segments.size == 2) {
-                        val name = segments[0]; val id = segments[1]
+                        val name = segments[0];
+                        val id = segments[1]
                         val ext = if (animated) "gif" else "webp"
-                        parts += Part.CustomEmoji(name, "https://cdn.discordapp.com/emojis/$id.$ext?size=32", animated)
+                        parts += Part.CustomEmoji(
+                            name,
+                            "https://cdn.discordapp.com/emojis/$id.$ext?size=64",
+                            animated
+                        )
                     } else parts += Part.PlainText(token)
                 }
+
                 token.startsWith("<@&") -> {
                     val id = token.removeSurrounding("<@&", ">")
                     parts += Part.RoleMention(id, roleNames[id] ?: "@deleted-role")
                 }
+
                 token.startsWith("<@") -> {
                     val id = token.removePrefix("<@!").removePrefix("<@").removeSuffix(">")
                     parts += Part.UserMention(id, userNames[id] ?: "@unknown")
                 }
+
                 token.startsWith("<#") -> {
                     val id = token.removeSurrounding("<#", ">")
                     parts += Part.ChannelMention(id, channelNames[id] ?: "#unknown")
                 }
+
                 token.startsWith("http") -> parts += Part.Link(token)
                 else -> parts += Part.PlainText(token)
             }
@@ -567,7 +821,9 @@ object ContentParser {
 data class Reaction(
     val emoji: ReactionEmoji,
     val count: Int,
-    val me: Boolean
+    val me: Boolean,
+    val meBurst: Boolean = false,
+    val burstCount: Int = 0
 )
 
 data class ReactionEmoji(
@@ -576,10 +832,11 @@ data class ReactionEmoji(
     val animated: Boolean
 ) {
     val apiKey: String get() = if (id != null) "$name:$id" else name
-    val imageUrl: String? get() = if (id != null) {
-        val ext = if (animated) "gif" else "webp"
-        "https://cdn.discordapp.com/emojis/$id.$ext?size=16"
-    } else null
+    val imageUrl: String?
+        get() = if (id != null) {
+            val ext = if (animated) "gif" else "webp"
+            "https://cdn.discordapp.com/emojis/$id.$ext?size=16"
+        } else null
 
     companion object {
         fun fromJson(o: JSONObject) = ReactionEmoji(
@@ -595,10 +852,11 @@ data class GuildEmoji(
     val name: String,
     val animated: Boolean
 ) {
-    val imageUrl: String get() {
-        val ext = if (animated) "gif" else "webp"
-        return "https://cdn.discordapp.com/emojis/$id.$ext?size=32"
-    }
+    val imageUrl: String
+        get() {
+            val ext = if (animated) "gif" else "webp"
+            return "https://cdn.discordapp.com/emojis/$id.$ext?size=32"
+        }
     val insertText: String get() = if (animated) "<a:$name:$id>" else "<:$name:$id>"
 
     fun toJson(): JSONObject = JSONObject()
@@ -612,6 +870,7 @@ data class GuildEmoji(
             name = o.getString("name"),
             animated = o.optBoolean("animated", false)
         )
+
         fun listFromJson(arr: JSONArray): List<GuildEmoji> =
             (0 until arr.length()).map { fromJson(arr.getJSONObject(it)) }
     }
@@ -639,6 +898,7 @@ data class DiscordMessage(
     val forwardedAuthor: DiscordUser? = null,
     val forwardedAttachments: List<Attachment> = emptyList(),
     val forwardedEmbeds: List<Embed> = emptyList(),
+    val forwardedStickers: List<StickerItem> = emptyList(),
     /** Non-null if this message started a thread. */
     val threadId: String? = null,
     val threadMessageCount: Int = 0
@@ -652,7 +912,13 @@ data class DiscordMessage(
         fun fromJson(o: JSONObject): DiscordMessage {
             val mentionsArr = o.optJSONArray("mentions")
             val mentionedUsers = if (mentionsArr != null)
-                (0 until mentionsArr.length()).map { DiscordUser.fromJson(mentionsArr.getJSONObject(it)) }
+                (0 until mentionsArr.length()).map {
+                    DiscordUser.fromJson(
+                        mentionsArr.getJSONObject(
+                            it
+                        )
+                    )
+                }
             else emptyList()
             val mentionedUserIds = mentionedUsers.map { it.id }
 
@@ -681,49 +947,66 @@ data class DiscordMessage(
                 (0 until reactArr.length()).mapNotNull { i ->
                     runCatching {
                         val r = reactArr.getJSONObject(i)
+                        val countDetails = r.optJSONObject("count_details")
+                        val normalCount = countDetails?.optInt("normal", r.optInt("count", 0))
+                            ?: r.optInt("count", 0)
+                        val burstCount = countDetails?.optInt("burst", r.optInt("burst_count", 0))
+                            ?: r.optInt("burst_count", 0)
+                        val totalCount = normalCount + burstCount
+                        val me = r.optBoolean("me", false)
+                        val meBurst = r.optBoolean("me_burst", false)
                         Reaction(
                             emoji = ReactionEmoji.fromJson(r.getJSONObject("emoji")),
-                            count = r.getInt("count"),
-                            me = r.optBoolean("me", false)
+                            count = if (totalCount > 0) totalCount else r.optInt("count", 1),
+                            me = me,
+                            meBurst = meBurst,
+                            burstCount = burstCount
                         )
                     }.getOrNull()
                 }
             else emptyList()
 
             val refMsgObj = o.optJSONObject("referenced_message")
-            val refMsg = if (refMsgObj != null) runCatching { fromJson(refMsgObj) }.getOrNull() else null
+            val refMsg =
+                if (refMsgObj != null) runCatching { fromJson(refMsgObj) }.getOrNull() else null
 
             val msgType = o.optInt("type", 0)
             var fwdContent: String? = null
             var fwdAuthor: DiscordUser? = null
             var fwdAttachments: List<Attachment> = emptyList()
             var fwdEmbeds: List<Embed> = emptyList()
+            var fwdStickers: List<StickerItem> = emptyList()
 
-            if (msgType == 23) {
-                val snapshots = o.optJSONArray("message_snapshots")
-                if (snapshots != null) {
-                    for (i in 0 until snapshots.length()) {
-                        val snapMsg = snapshots.getJSONObject(i)
-                            .optJSONObject("message") ?: continue
+            val snapshots = o.optJSONArray("message_snapshots")
+            if (snapshots != null) {
+                for (i in 0 until snapshots.length()) {
+                    val snapMsg = snapshots.getJSONObject(i)
+                        .optJSONObject("message") ?: continue
 
-                        fwdContent = snapMsg.optString("content").takeIf { it.isNotEmpty() }
-                        fwdAuthor = null
+                    fwdContent = snapMsg.optString("content").takeIf { it.isNotEmpty() }
+                    fwdAuthor = snapMsg.optJSONObject("author")?.let { DiscordUser.fromJson(it) }
 
-                        val fwdAttachArr = snapMsg.optJSONArray("attachments")
-                        if (fwdAttachArr != null) {
-                            fwdAttachments = (0 until fwdAttachArr.length())
-                                .map { Attachment.fromJson(fwdAttachArr.getJSONObject(it)) }
-                        }
-
-                        val fwdEmbedArr = snapMsg.optJSONArray("embeds")
-                        if (fwdEmbedArr != null) {
-                            fwdEmbeds = (0 until fwdEmbedArr.length())
-                                .map { Embed.fromJson(fwdEmbedArr.getJSONObject(it)) }
-                        }
-
-                        if (fwdContent != null || fwdAuthor != null ||
-                            fwdAttachments.isNotEmpty() || fwdEmbeds.isNotEmpty()) break
+                    val fwdAttachArr = snapMsg.optJSONArray("attachments")
+                    if (fwdAttachArr != null) {
+                        fwdAttachments = (0 until fwdAttachArr.length())
+                            .map { Attachment.fromJson(fwdAttachArr.getJSONObject(it)) }
                     }
+
+                    val fwdEmbedArr = snapMsg.optJSONArray("embeds")
+                    if (fwdEmbedArr != null) {
+                        fwdEmbeds = (0 until fwdEmbedArr.length())
+                            .map { Embed.fromJson(fwdEmbedArr.getJSONObject(it)) }
+                    }
+
+                    val fwdStickerArr = snapMsg.optJSONArray("sticker_items")
+                    if (fwdStickerArr != null) {
+                        fwdStickers = (0 until fwdStickerArr.length())
+                            .map { StickerItem.fromJson(fwdStickerArr.getJSONObject(it)) }
+                    }
+
+                    if (fwdContent != null || fwdAuthor != null ||
+                        fwdAttachments.isNotEmpty() || fwdEmbeds.isNotEmpty() || fwdStickers.isNotEmpty()
+                    ) break
                 }
             }
 
@@ -749,6 +1032,7 @@ data class DiscordMessage(
                 forwardedAuthor = fwdAuthor,
                 forwardedAttachments = fwdAttachments,
                 forwardedEmbeds = fwdEmbeds,
+                forwardedStickers = fwdStickers,
                 threadId = o.optJSONObject("thread")?.optString("id")
                     ?.takeIf { it.isNotEmpty() && it != "null" },
                 threadMessageCount = o.optJSONObject("thread")?.optInt("message_count", 0) ?: 0

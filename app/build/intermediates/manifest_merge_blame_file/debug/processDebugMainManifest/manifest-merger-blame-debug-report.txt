@@ -1,0 +1,193 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.zaffox.discordwear"
+4    android:versionCode="10"
+5    android:versionName="2.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="30"
+9        android:targetSdkVersion="35" />
+10
+11    <uses-feature android:name="android.hardware.type.watch" />
+11-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:4:5-64
+11-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:4:19-61
+12
+13    <uses-permission android:name="android.permission.WAKE_LOCK" />
+13-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:5:5-68
+13-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:5:22-65
+14    <uses-permission android:name="android.permission.INTERNET" />
+14-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:6:5-67
+14-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:6:22-64
+15    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+15-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:7:5-79
+15-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:7:22-76
+16    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+16-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:8:5-76
+16-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:8:22-73
+17    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+17-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:9:5-79
+17-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:9:22-76
+18    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+18-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:10:5-76
+18-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:10:22-73
+19    <uses-permission
+19-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:11:5-12:38
+20        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+20-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:11:22-78
+21        android:maxSdkVersion="28" />
+21-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:12:9-35
+22    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+22-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:13:5-83
+22-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:13:22-80
+23    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+23-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:14:5-71
+23-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:14:22-68
+24    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+24-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:15:5-76
+24-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:15:22-73
+25    <uses-permission
+25-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:16:5-17:38
+26        android:name="android.permission.READ_EXTERNAL_STORAGE"
+26-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:16:22-77
+27        android:maxSdkVersion="32" />
+27-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:17:9-35
+28
+29    <permission
+29-->[androidx.core:core:1.15.0] /home/owen/.gradle/caches/8.14.5/transforms/2b2e655f497834e1f33a197e2f2904b7/transformed/core-1.15.0/AndroidManifest.xml:22:5-24:47
+30        android:name="com.zaffox.discordwear.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+30-->[androidx.core:core:1.15.0] /home/owen/.gradle/caches/8.14.5/transforms/2b2e655f497834e1f33a197e2f2904b7/transformed/core-1.15.0/AndroidManifest.xml:23:9-81
+31        android:protectionLevel="signature" />
+31-->[androidx.core:core:1.15.0] /home/owen/.gradle/caches/8.14.5/transforms/2b2e655f497834e1f33a197e2f2904b7/transformed/core-1.15.0/AndroidManifest.xml:24:9-44
+32
+33    <uses-permission android:name="com.zaffox.discordwear.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+33-->[androidx.core:core:1.15.0] /home/owen/.gradle/caches/8.14.5/transforms/2b2e655f497834e1f33a197e2f2904b7/transformed/core-1.15.0/AndroidManifest.xml:26:5-97
+33-->[androidx.core:core:1.15.0] /home/owen/.gradle/caches/8.14.5/transforms/2b2e655f497834e1f33a197e2f2904b7/transformed/core-1.15.0/AndroidManifest.xml:26:22-94
+34
+35    <application
+35-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:19:5-45:19
+36        android:name="com.zaffox.discordwear.DiscordWearApp"
+36-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:20:9-39
+37        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+37-->[androidx.core:core:1.15.0] /home/owen/.gradle/caches/8.14.5/transforms/2b2e655f497834e1f33a197e2f2904b7/transformed/core-1.15.0/AndroidManifest.xml:28:18-86
+38        android:debuggable="true"
+39        android:extractNativeLibs="true"
+40        android:icon="@mipmap/ic_launcher_round"
+40-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:22:9-49
+41        android:label="@string/app_name"
+41-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:21:9-41
+42        android:supportsRtl="true"
+42-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:24:9-35
+43        android:theme="@android:style/Theme.DeviceDefault" >
+43-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:23:9-59
+44        <activity
+44-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:26:9-34:20
+45            android:name="com.zaffox.discordwear.MainActivity"
+45-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:27:13-41
+46            android:exported="true"
+46-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:28:13-36
+47            android:taskAffinity="" >
+47-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:29:13-36
+48            <intent-filter>
+48-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:30:13-33:29
+49                <action android:name="android.intent.action.MAIN" />
+49-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:31:17-69
+49-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:31:25-66
+50
+51                <category android:name="android.intent.category.LAUNCHER" />
+51-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:32:17-77
+51-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:32:27-74
+52            </intent-filter>
+53        </activity>
+54
+55        <provider
+56            android:name="androidx.core.content.FileProvider"
+56-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:37:13-62
+57            android:authorities="com.zaffox.discordwear.fileprovider"
+57-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:38:13-64
+58            android:exported="false"
+58-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:39:13-37
+59            android:grantUriPermissions="true" >
+59-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:40:13-47
+60            <meta-data
+60-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:41:13-43:63
+61                android:name="android.support.FILE_PROVIDER_PATHS"
+61-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:42:17-67
+62                android:resource="@xml/file_provider_paths" />
+62-->/home/owen/Discord-WearOS/app/src/main/AndroidManifest.xml:43:17-60
+63        </provider>
+64
+65        <uses-library
+65-->[androidx.wear.compose:compose-foundation:1.6.0-rc01] /home/owen/.gradle/caches/8.14.5/transforms/e6ff0f0ddb7f8cf266aeac8eb00e49f9/transformed/jetified-compose-foundation-1.6.0-rc01/AndroidManifest.xml:23:9-25:40
+66            android:name="wear-sdk"
+66-->[androidx.wear.compose:compose-foundation:1.6.0-rc01] /home/owen/.gradle/caches/8.14.5/transforms/e6ff0f0ddb7f8cf266aeac8eb00e49f9/transformed/jetified-compose-foundation-1.6.0-rc01/AndroidManifest.xml:24:13-36
+67            android:required="false" />
+67-->[androidx.wear.compose:compose-foundation:1.6.0-rc01] /home/owen/.gradle/caches/8.14.5/transforms/e6ff0f0ddb7f8cf266aeac8eb00e49f9/transformed/jetified-compose-foundation-1.6.0-rc01/AndroidManifest.xml:25:13-37
+68
+69        <provider
+69-->[androidx.emoji2:emoji2:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/4b8fe2fee0b5875d16a5b12095022430/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:24:9-32:20
+70            android:name="androidx.startup.InitializationProvider"
+70-->[androidx.emoji2:emoji2:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/4b8fe2fee0b5875d16a5b12095022430/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:25:13-67
+71            android:authorities="com.zaffox.discordwear.androidx-startup"
+71-->[androidx.emoji2:emoji2:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/4b8fe2fee0b5875d16a5b12095022430/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:26:13-68
+72            android:exported="false" >
+72-->[androidx.emoji2:emoji2:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/4b8fe2fee0b5875d16a5b12095022430/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:27:13-37
+73            <meta-data
+73-->[androidx.emoji2:emoji2:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/4b8fe2fee0b5875d16a5b12095022430/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:29:13-31:52
+74                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+74-->[androidx.emoji2:emoji2:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/4b8fe2fee0b5875d16a5b12095022430/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:30:17-75
+75                android:value="androidx.startup" />
+75-->[androidx.emoji2:emoji2:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/4b8fe2fee0b5875d16a5b12095022430/transformed/jetified-emoji2-1.4.0/AndroidManifest.xml:31:17-49
+76            <meta-data
+76-->[androidx.lifecycle:lifecycle-process:2.9.0] /home/owen/.gradle/caches/8.14.5/transforms/d6e259a3bbb863084cf21d9681ef8ea2/transformed/jetified-lifecycle-process-2.9.0/AndroidManifest.xml:29:13-31:52
+77                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+77-->[androidx.lifecycle:lifecycle-process:2.9.0] /home/owen/.gradle/caches/8.14.5/transforms/d6e259a3bbb863084cf21d9681ef8ea2/transformed/jetified-lifecycle-process-2.9.0/AndroidManifest.xml:30:17-78
+78                android:value="androidx.startup" />
+78-->[androidx.lifecycle:lifecycle-process:2.9.0] /home/owen/.gradle/caches/8.14.5/transforms/d6e259a3bbb863084cf21d9681ef8ea2/transformed/jetified-lifecycle-process-2.9.0/AndroidManifest.xml:31:17-49
+79            <meta-data
+79-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:29:13-31:52
+80                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+80-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:30:17-85
+81                android:value="androidx.startup" />
+81-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:31:17-49
+82        </provider>
+83
+84        <receiver
+84-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:34:9-52:20
+85            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+85-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:35:13-76
+86            android:directBootAware="false"
+86-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:36:13-44
+87            android:enabled="true"
+87-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:37:13-35
+88            android:exported="true"
+88-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:38:13-36
+89            android:permission="android.permission.DUMP" >
+89-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:39:13-57
+90            <intent-filter>
+90-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:40:13-42:29
+91                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+91-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:41:17-91
+91-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:41:25-88
+92            </intent-filter>
+93            <intent-filter>
+93-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:43:13-45:29
+94                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+94-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:44:17-85
+94-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:44:25-82
+95            </intent-filter>
+96            <intent-filter>
+96-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:46:13-48:29
+97                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+97-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:47:17-88
+97-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:47:25-85
+98            </intent-filter>
+99            <intent-filter>
+99-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:49:13-51:29
+100                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+100-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:50:17-95
+100-->[androidx.profileinstaller:profileinstaller:1.4.0] /home/owen/.gradle/caches/8.14.5/transforms/c85326ecc367c969e2f7af2271f2d64c/transformed/jetified-profileinstaller-1.4.0/AndroidManifest.xml:50:25-92
+101            </intent-filter>
+102        </receiver>
+103    </application>
+104
+105</manifest>

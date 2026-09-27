@@ -1,0 +1,106 @@
+[
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_delete.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/delete.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_ic_default_avatar.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/ic_default_avatar.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/xml_file_provider_paths.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/xml/file_provider_paths.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_down.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/down.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_settings.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/settings.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_copy.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/copy.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_edit.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/edit.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_unhide.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/unhide.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_sticker.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/sticker.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_reply.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/reply.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_hide.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/hide.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/mipmap-xxhdpi_ic_launcher_round.png.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/mipmap-xxhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_pin.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/pin.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_emoji.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/emoji.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_send.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/send.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_pause.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/pause.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/mipmap-xhdpi_ic_launcher_round.png.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/mipmap-xhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_play.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/play.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_rules.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/rules.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_lock.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/lock.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_announce.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/announce.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_image.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/image.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_unpin.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/unpin.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/mipmap-hdpi_ic_launcher_round.png.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/mipmap-hdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/drawable_mic.xml.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/drawable/mic.xml"
+    },
+    {
+        "merged": "com.zaffox.discordwear.app-release-49:/mipmap-mdpi_ic_launcher_round.png.flat",
+        "source": "com.zaffox.discordwear.app-main-50:/mipmap-mdpi/ic_launcher_round.png"
+    }
+]

@@ -1,0 +1,20 @@
+{
+  "version": 3,
+  "artifactType": {
+    "type": "LINKED_RESOURCES_BINARY_FORMAT",
+    "kind": "Directory"
+  },
+  "applicationId": "com.zaffox.discordwear",
+  "variantName": "debug",
+  "elements": [
+    {
+      "type": "SINGLE",
+      "filters": [],
+      "attributes": [],
+      "versionCode": 10,
+      "versionName": "2.0",
+      "outputFile": "linked-resources-binary-format-debug.ap_"
+    }
+  ],
+  "elementType": "File"
+}

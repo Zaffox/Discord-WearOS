@@ -8,7 +8,6 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -41,7 +40,6 @@ fun WelcomeScreen(onSetupComplete: () -> Unit, onNavigateToQrLogin: () -> Unit) 
     var serverStatus by remember { mutableStateOf("") }
     var serverAddresses by remember { mutableStateOf<List<String>>(emptyList()) }
     var webServer by remember { mutableStateOf<TokenWebServer?>(null) }
-    var showQr by remember { mutableStateOf(false) }
 
     val wifiManager = remember {
         context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -63,6 +61,7 @@ fun WelcomeScreen(onSetupComplete: () -> Unit, onNavigateToQrLogin: () -> Unit) 
             override fun onAvailable(network: Network) {
                 connectivityManager.bindProcessToNetwork(network)
             }
+
             override fun onLost(network: Network) {
                 connectivityManager.bindProcessToNetwork(null)
             }
@@ -138,7 +137,7 @@ fun WelcomeScreen(onSetupComplete: () -> Unit, onNavigateToQrLogin: () -> Unit) 
     }
 
     ScreenScaffold(scrollState = listState) {
-        
+
         ScalingLazyColumn(
             state = listState,
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -157,30 +156,64 @@ fun WelcomeScreen(onSetupComplete: () -> Unit, onNavigateToQrLogin: () -> Unit) 
                     "Enter your Discord token to get started.",
                     style = MaterialTheme.typography.bodySmall,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
                 )
             }
 
             item {
                 Button(
                     onClick = { onNavigateToQrLogin() },
-                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp),
                 ) { Text("Scan QR Code") }
             }
 
             item {
                 Button(
                     onClick = { openTokenInput() },
-                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp),
                     colors = ButtonDefaults.filledTonalButtonColors()
                 ) { Text("Type Token") }
+            }
+
+            item {
+                Button(
+                    onClick = {
+                        val clipboard =
+                            context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clipData = clipboard.primaryClip
+                        val pastedText = if (clipData != null && clipData.itemCount > 0) {
+                            clipData.getItemAt(0).text?.toString()?.trim()
+                        } else null
+                        if (!pastedText.isNullOrBlank()) {
+                            scope.launch {
+                                SetupPreferences.saveToken(context, pastedText)
+                                context.discordApp.initRepository(pastedText)
+                                onSetupComplete()
+                            }
+                        } else {
+                            error = "Clipboard is empty"
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors()
+                ) { Text("Paste from Clipboard") }
             }
 
             if (webServer == null) {
                 item {
                     Button(
                         onClick = { startWebServer() },
-                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
                         colors = ButtonDefaults.filledTonalButtonColors()
                     ) { Text("Enter via Browser") }
                 }
@@ -194,7 +227,7 @@ fun WelcomeScreen(onSetupComplete: () -> Unit, onNavigateToQrLogin: () -> Unit) 
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-                serverAddresses.forEachIndexed { idx, addr ->
+                serverAddresses.forEach { addr ->
                     item {
                         Text(
                             "http://$addr:8080",
@@ -206,14 +239,19 @@ fun WelcomeScreen(onSetupComplete: () -> Unit, onNavigateToQrLogin: () -> Unit) 
                 }
                 item {
                     Button(
-                         onClick = { webServer?.stop(); webServer = null; serverStatus = ""; releaseWifiLock() },
-                         modifier = Modifier.fillMaxWidth().height(36.dp),
-                         colors = ButtonDefaults.filledTonalButtonColors()
+                        onClick = {
+                            webServer?.stop(); webServer = null; serverStatus =
+                            ""; releaseWifiLock()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors()
                     ) { Text("Stop Web Server") }
                 }
             }
 
-           if (error.isNotEmpty()) {
+            if (error.isNotEmpty()) {
                 item {
                     Text(
                         error,

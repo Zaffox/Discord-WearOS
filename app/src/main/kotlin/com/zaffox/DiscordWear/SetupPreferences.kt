@@ -34,7 +34,7 @@ object SetupPreferences {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit { putBoolean(KEY_HIDE_INACCESSIBLE, hide) }
     }
-    
+
     fun getSendAnimatedAsGif(context: Context): Boolean =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(KEY_SEND_ANIMATED_AS_GIF, true)
@@ -85,8 +85,11 @@ object SetupPreferences {
 
     fun togglePinnedServer(context: Context, guildId: String): Boolean {
         val current = getPinnedServers(context).toMutableSet()
-        val pinned = if (current.contains(guildId)) { current.remove(guildId); false }
-                     else { current.add(guildId); true }
+        val pinned = if (current.contains(guildId)) {
+            current.remove(guildId); false
+        } else {
+            current.add(guildId); true
+        }
         setPinnedServers(context, current)
         return pinned
     }
@@ -104,8 +107,11 @@ object SetupPreferences {
 
     fun toggleHiddenServer(context: Context, guildId: String): Boolean {
         val current = getHiddenServers(context).toMutableSet()
-        val hidden = if (current.contains(guildId)) { current.remove(guildId); false }
-                     else { current.add(guildId); true }
+        val hidden = if (current.contains(guildId)) {
+            current.remove(guildId); false
+        } else {
+            current.add(guildId); true
+        }
         setHiddenServers(context, current)
         return hidden
     }
@@ -123,8 +129,11 @@ object SetupPreferences {
 
     fun toggleHiddenDm(context: Context, channelId: String): Boolean {
         val current = getHiddenDms(context).toMutableSet()
-        val hidden = if (current.contains(channelId)) { current.remove(channelId); false }
-                     else { current.add(channelId); true }
+        val hidden = if (current.contains(channelId)) {
+            current.remove(channelId); false
+        } else {
+            current.add(channelId); true
+        }
         setHiddenDms(context, current)
         return hidden
     }

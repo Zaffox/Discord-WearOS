@@ -1,0 +1,27 @@
+R_DEF: Internal format may change without notice
+local
+drawable announce
+drawable copy
+drawable delete
+drawable down
+drawable edit
+drawable emoji
+drawable hide
+drawable ic_default_avatar
+drawable image
+drawable lock
+drawable mic
+drawable pause
+drawable pin
+drawable play
+drawable reply
+drawable rules
+drawable send
+drawable settings
+drawable sticker
+drawable unhide
+drawable unpin
+mipmap ic_launcher_round
+string app_name
+string home_title
+xml file_provider_paths

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -27,19 +28,20 @@ data class ReleaseInfo(
 
 object UpdateChecker {
     private const val GITHUB_OWNER = "zaffox"
-    private const val GITHUB_REPO  = "Discord-WearOS"
-    private const val API_URL      = "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
-    const val CURRENT_VERSION = "1.6"
-    private const val PREFS_NAME        = "update_checker"
-    private const val KEY_LAST_CHECK    = "last_check_ms"
-    private const val KEY_LATEST_TAG    = "latest_tag"
-    private const val KEY_LATEST_APK    = "latest_apk_url"
-    private const val KEY_LATEST_HTML   = "latest_html_url"
-    private const val KEY_LATEST_NAME   = "latest_release_name"
+    private const val GITHUB_REPO = "Discord-WearOS"
+    private const val API_URL =
+        "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
+    const val CURRENT_VERSION = "2.0"
+    private const val PREFS_NAME = "update_checker"
+    private const val KEY_LAST_CHECK = "last_check_ms"
+    private const val KEY_LATEST_TAG = "latest_tag"
+    private const val KEY_LATEST_APK = "latest_apk_url"
+    private const val KEY_LATEST_HTML = "latest_html_url"
+    private const val KEY_LATEST_NAME = "latest_release_name"
     private const val CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
 
-    private val scope  = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val http   = OkHttpClient.Builder()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
@@ -48,9 +50,9 @@ object UpdateChecker {
     val state: StateFlow<UpdateState> = _state.asStateFlow()
 
     sealed class UpdateState {
-        object Idle       : UpdateState()
-        object Checking   : UpdateState()
-        object UpToDate   : UpdateState()
+        object Idle : UpdateState()
+        object Checking : UpdateState()
+        object UpToDate : UpdateState()
         data class UpdateAvailable(val release: ReleaseInfo) : UpdateState()
         data class Error(val message: String) : UpdateState()
     }
@@ -58,7 +60,7 @@ object UpdateChecker {
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    
+
     fun start(context: Context) {
         scope.launch {
             restoreCachedState(context)
@@ -76,25 +78,23 @@ object UpdateChecker {
     }
 
     private fun restoreCachedState(context: Context) {
-        val p   = prefs(context)
+        val p = prefs(context)
         val tag = p.getString(KEY_LATEST_TAG, null) ?: return
         if (isNewer(tag, CURRENT_VERSION)) {
             _state.value = UpdateState.UpdateAvailable(
                 ReleaseInfo(
-                    tagName     = tag,
-                    name        = p.getString(KEY_LATEST_NAME, tag) ?: tag,
-                    body        = "",
-                    apkUrl      = p.getString(KEY_LATEST_APK, null),
-                    htmlUrl     = p.getString(KEY_LATEST_HTML, "") ?: "",
+                    tagName = tag,
+                    name = p.getString(KEY_LATEST_NAME, tag) ?: tag,
+                    body = "",
+                    apkUrl = p.getString(KEY_LATEST_APK, null),
+                    htmlUrl = p.getString(KEY_LATEST_HTML, "") ?: "",
                     publishedAt = ""
                 )
             )
-        } else {
-            _state.value = UpdateState.UpToDate
         }
     }
 
-    private suspend fun check(context: Context) {
+    private suspend fun check(context: Context) = withContext(Dispatchers.IO) {
         _state.value = UpdateState.Checking
         runCatching {
             val request = Request.Builder()
@@ -108,11 +108,11 @@ object UpdateChecker {
                 resp.body?.string() ?: error("Empty body")
             }
 
-            val json      = JSONObject(body)
-            val tag       = json.getString("tag_name").trimStart('v')
-            val name      = json.optString("name", tag)
+            val json = JSONObject(body)
+            val tag = json.getString("tag_name").removePrefix("v").removePrefix("V").trim()
+            val name = json.optString("name", tag)
             val releaseBody = json.optString("body", "")
-            val htmlUrl   = json.getString("html_url")
+            val htmlUrl = json.getString("html_url")
 
             val assets = json.optJSONArray("assets") ?: JSONArray()
             var apkUrl: String? = null
@@ -132,7 +132,8 @@ object UpdateChecker {
                 .putString(KEY_LATEST_HTML, htmlUrl)
                 .apply()
 
-            val release = ReleaseInfo(tag, name, releaseBody, apkUrl, htmlUrl, json.optString("published_at"))
+            val release =
+                ReleaseInfo(tag, name, releaseBody, apkUrl, htmlUrl, json.optString("published_at"))
             _state.value = if (isNewer(tag, CURRENT_VERSION))
                 UpdateState.UpdateAvailable(release)
             else
@@ -143,7 +144,9 @@ object UpdateChecker {
     }
 
     private fun isNewer(candidate: String, current: String): Boolean {
-        val clean = { v: String -> v.substringBefore("-").substringBefore("_") }
+        val clean = { v: String ->
+            v.removePrefix("v").removePrefix("V").substringBefore("-").substringBefore("_")
+        }
         val cParts = clean(candidate).split(".").mapNotNull { it.toIntOrNull() }
         val oParts = clean(current).split(".").mapNotNull { it.toIntOrNull() }
         if (cParts.isEmpty() || oParts.isEmpty()) return candidate != current

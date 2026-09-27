@@ -2,7 +2,6 @@ package com.zaffox.discordwear.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,8 +36,7 @@ fun HomeScreen(
     }
 
     val repo = context.discordApp.repository
-    val currentUser by (repo?.currentUser ?: return).collectAsState()
-    val pings by repo.pings.collectAsState()
+    val pings by (repo?.pings ?: return).collectAsState()
     val readState by repo.readState.collectAsState()
     val dmChannels by repo.dmChannels.collectAsState()
     val guilds by repo.guilds.collectAsState()
@@ -52,17 +50,26 @@ fun HomeScreen(
         readState.entries.filter { it.key !in dmIds }.sumOf { it.value.mentionCount }
     }
 
-    // Mention cards: combine live gateway pings with readState channels that have mention counts
-    // so cards appear immediately on load, not only after a new message arrives
-    val channelNames = remember(readState) { repo.getChannelNames() }
-    val channelGuilds = remember(readState) { repo.getChannelGuilds() }
-    data class MentionEntry(val channelId: String, val channelName: String, val guildName: String?, val count: Int, val isDm: Boolean)
+    val channelNames by repo.channelNames.collectAsState()
+    val channelGuilds by repo.channelGuilds.collectAsState()
+
+    data class MentionEntry(
+        val channelId: String,
+        val channelName: String,
+        val guildName: String?,
+        val count: Int,
+        val isDm: Boolean
+    )
+
     val mentionEntries = remember(readState, dmIds, channelNames, channelGuilds, guilds) {
         readState.entries
             .filter { it.value.mentionCount > 0 }
             .map { (channelId, state) ->
                 val isDm = channelId in dmIds
-                val chName = channelNames[channelId] ?: channelId
+                val chName = channelNames[channelId] ?: run {
+                    repo.ensureChannelCached(channelId)
+                    channelId
+                }
                 val guildId = channelGuilds[channelId]
                 val guildName = guildId?.let { id -> guilds.firstOrNull { it.id == id }?.name }
                 MentionEntry(channelId, chName, guildName, state.mentionCount, isDm)
@@ -93,7 +100,10 @@ fun HomeScreen(
                                 .align(Alignment.TopEnd)
                                 .padding(top = 2.dp, end = 2.dp)
                                 .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
-                                .background(androidx.compose.ui.graphics.Color(0xFFF23F43), androidx.compose.foundation.shape.CircleShape)
+                                .background(
+                                    androidx.compose.ui.graphics.Color(0xFFF23F43),
+                                    androidx.compose.foundation.shape.CircleShape
+                                )
                                 .padding(horizontal = 4.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -121,7 +131,10 @@ fun HomeScreen(
                                 .align(Alignment.TopEnd)
                                 .padding(top = 2.dp, end = 2.dp)
                                 .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
-                                .background(androidx.compose.ui.graphics.Color(0xFFF23F43), androidx.compose.foundation.shape.CircleShape)
+                                .background(
+                                    androidx.compose.ui.graphics.Color(0xFFF23F43),
+                                    androidx.compose.foundation.shape.CircleShape
+                                )
                                 .padding(horizontal = 4.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -148,12 +161,16 @@ fun HomeScreen(
                 items(mentionEntries.size) { index ->
                     val entry = mentionEntries[index]
                     val label = if (entry.isDm) "DM • ${entry.channelName}"
-                                else "${entry.guildName ?: "Server"} • #${entry.channelName}"
+                    else "${entry.guildName ?: "Server"} • #${entry.channelName}"
                     MentionCard(
                         label = label,
                         count = entry.count,
                         onClick = {
-                            onNavigateToChat(entry.channelId, entry.channelName, if (entry.isDm) null else channelGuilds[entry.channelId])
+                            onNavigateToChat(
+                                entry.channelId,
+                                entry.channelName,
+                                if (entry.isDm) null else channelGuilds[entry.channelId]
+                            )
                         }
                     )
                 }
@@ -163,7 +180,11 @@ fun HomeScreen(
                     // Skip if this channel already covered by a readState card above
                     if (mentionEntries.none { it.channelId == ping.message.channelId }) {
                         PingCard(ping = ping, onClick = {
-                            onNavigateToChat(ping.message.channelId, ping.channelName, ping.message.guildId)
+                            onNavigateToChat(
+                                ping.message.channelId,
+                                ping.channelName,
+                                ping.message.guildId
+                            )
                         })
                     }
                 }
@@ -179,15 +200,17 @@ fun HomeScreen(
             }
             item {
                 FilledIconButton(
-                        onClick = onNavigateToSettings,
-                        modifier = Modifier.height(40.dp).width(40.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.settings),
-                            contentDescription = "Settings"
-                        )
-                    }
-              }
+                    onClick = onNavigateToSettings,
+                    modifier = Modifier
+                        .height(40.dp)
+                        .width(40.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.settings),
+                        contentDescription = "Settings"
+                    )
+                }
+            }
         }
     }
 }
@@ -230,7 +253,7 @@ private fun MentionCard(label: String, count: Int, onClick: () -> Unit) {
 @Composable
 private fun PingCard(ping: Ping, onClick: () -> Unit) {
     val location = if (ping.guildName != null) "${ping.guildName} • #${ping.channelName}"
-                   else "DM • ${ping.channelName}"
+    else "DM • ${ping.channelName}"
 
     TitleCard(
         modifier = Modifier.fillMaxWidth(),

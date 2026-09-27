@@ -33,13 +33,13 @@ fun QrLoginScreen(onSetupComplete: () -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     val listState = rememberScalingLazyListState()
 
-    var state  by remember { mutableStateOf<RemoteAuthState>(RemoteAuthState.Connecting) }
+    var state by remember { mutableStateOf<RemoteAuthState>(RemoteAuthState.Connecting) }
     var status by remember { mutableStateOf(RemoteAuthStatus()) }
     var client by remember { mutableStateOf<RemoteAuthClient?>(null) }
 
     LaunchedEffect(Unit) {
         val c = RemoteAuthClient(
-            onStateChange  = { newState  -> state  = newState  },
+            onStateChange = { newState -> state = newState },
             onStatusUpdate = { newStatus -> status = newStatus },
             onTokenReceived = { token ->
                 SetupPreferences.saveToken(context, token)
@@ -51,8 +51,13 @@ fun QrLoginScreen(onSetupComplete: () -> Unit, onBack: () -> Unit) {
         c.connect()
     }
 
-    DisposableEffect(Unit) {
-        onDispose { client?.disconnect() }
+    val activity = context as? android.app.Activity
+    DisposableEffect(activity) {
+        activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            client?.disconnect()
+        }
     }
 
     ScreenScaffold(scrollState = listState) {
@@ -62,6 +67,35 @@ fun QrLoginScreen(onSetupComplete: () -> Unit, onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize()
         ) {
             when (val s = state) {
+                is RemoteAuthState.CaptchaRequired -> {
+                    item {
+                        Text(
+                            "Captcha Required",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    item {
+                        Text(
+                            "Discord is requiring a captcha. Try again with a different login method, Or check if a VPN/Poxy is enabled, and that you are on a Home IP. ",
+                            style = MaterialTheme.typography.labelSmall,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp)
+                        )
+                    }
+                    item {
+                        Button(
+                            onClick = { client?.disconnect(); onBack() },
+                            modifier = Modifier
+                                .fillMaxWidth(0.7f)
+                                .height(32.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors()
+                        ) { Text("Go Back") }
+                    }
+                }
 
                 is RemoteAuthState.Connecting -> {
                     item {
@@ -87,7 +121,9 @@ fun QrLoginScreen(onSetupComplete: () -> Unit, onBack: () -> Unit) {
                     item {
                         Button(
                             onClick = { client?.disconnect(); onBack() },
-                            modifier = Modifier.fillMaxWidth(0.7f).height(32.dp),
+                            modifier = Modifier
+                                .fillMaxWidth(0.7f)
+                                .height(32.dp),
                             colors = ButtonDefaults.filledTonalButtonColors()
                         ) { Text("Cancel") }
                     }
@@ -123,7 +159,9 @@ fun QrLoginScreen(onSetupComplete: () -> Unit, onBack: () -> Unit) {
                     item {
                         Button(
                             onClick = { client?.disconnect(); onBack() },
-                            modifier = Modifier.fillMaxWidth(0.7f).height(32.dp),
+                            modifier = Modifier
+                                .fillMaxWidth(0.7f)
+                                .height(32.dp),
                             colors = ButtonDefaults.filledTonalButtonColors()
                         ) { Text("Cancel") }
                     }
@@ -146,12 +184,15 @@ fun QrLoginScreen(onSetupComplete: () -> Unit, onBack: () -> Unit) {
                                 model = avatarUrl,
                                 contentDescription = "Avatar",
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.size(48.dp).clip(CircleShape)
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
                             )
                         } else {
                             Box(
                                 modifier = Modifier
-                                    .size(48.dp).clip(CircleShape)
+                                    .size(48.dp)
+                                    .clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.primary),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -176,7 +217,9 @@ fun QrLoginScreen(onSetupComplete: () -> Unit, onBack: () -> Unit) {
                             "Tap 'Log In' in the Discord app",
                             style = MaterialTheme.typography.labelSmall,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp)
                         )
                     }
                     item { CircularProgressIndicator(modifier = Modifier.size(24.dp)) }
@@ -184,22 +227,46 @@ fun QrLoginScreen(onSetupComplete: () -> Unit, onBack: () -> Unit) {
 
                 is RemoteAuthState.Canceled -> {
                     item {
-                        Text("Canceled", style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
+                        Text(
+                            "Canceled",
+                            style = MaterialTheme.typography.titleSmall,
+                            textAlign = TextAlign.Center
+                        )
                     }
                     item {
-                        Text("Login was canceled on your phone.", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                        Text(
+                            "Login was canceled on your phone.",
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center
+                        )
                     }
                     item {
-                        Button(onClick = { onBack() }, modifier = Modifier.fillMaxWidth(0.7f).height(32.dp)) { Text("Go Back") }
+                        Button(
+                            onClick = { onBack() },
+                            modifier = Modifier
+                                .fillMaxWidth(0.7f)
+                                .height(32.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors()
+                        ) { Text("Go Back") }
                     }
                 }
 
                 is RemoteAuthState.Error -> {
                     item {
-                        Text("Error", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+                        Text(
+                            "Error",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center
+                        )
                     }
                     item {
-                        Text(s.message, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 8.dp))
+                        Text(
+                            s.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
                     }
                     // Show log even on error so we can debug
                     items(status.lines.size) { i ->
@@ -208,11 +275,18 @@ fun QrLoginScreen(onSetupComplete: () -> Unit, onBack: () -> Unit) {
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Start,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 1.dp)
                         )
                     }
                     item {
-                        Button(onClick = { onBack() }, modifier = Modifier.fillMaxWidth(0.7f).height(32.dp)) { Text("Go Back") }
+                        Button(
+                            onClick = { onBack() },
+                            modifier = Modifier
+                                .fillMaxWidth(0.7f)
+                                .height(32.dp)
+                        ) { Text("Go Back") }
                     }
                 }
             }
@@ -238,6 +312,10 @@ private fun generateQrBitmap(content: String, size: Int): Bitmap? = runCatching 
     val matrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, size, size, hints)
     val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
     for (x in 0 until size) for (y in 0 until size)
-        bmp.setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+        bmp.setPixel(
+            x,
+            y,
+            if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+        )
     bmp
 }.getOrNull()

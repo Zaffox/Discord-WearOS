@@ -15,6 +15,7 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
+import org.json.JSONArray
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -27,7 +28,8 @@ class DiscordGateway(private val token: String) {
     private val seq = AtomicInteger(-1)
     private var sessionId: String? = null
     private var resumeUrl: String? = null
-    @Volatile private var connected = false
+    @Volatile
+    private var connected = false
 
     private val http = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -64,6 +66,30 @@ class DiscordGateway(private val token: String) {
         ws?.send(payload.toString())
     }
 
+    fun selectChannel(channelId: String, guildId: String?) {
+        if (guildId != null) {
+            val sub = JSONObject()
+                .put("op", 14)
+                .put(
+                    "d", JSONObject()
+                        .put("guild_id", guildId)
+                        .put("typing", true)
+                        .put("threads", true)
+                        .put("activities", true)
+                        .put(
+                            "channels",
+                            JSONObject().put(channelId, JSONArray().put(JSONArray().put(0).put(99)))
+                        )
+                )
+            ws?.send(sub.toString())
+        }
+        val d = JSONObject()
+            .put("channel_id", channelId)
+            .put("guild_id", guildId ?: JSONObject.NULL)
+            .put("with_message", true)
+        send(13, d)
+    }
+
     private fun sendHeartbeat() {
         val s = seq.get().takeIf { it >= 0 }
         send(Op.HEARTBEAT, s)
@@ -72,11 +98,21 @@ class DiscordGateway(private val token: String) {
     private fun sendIdentify() {
         val d = JSONObject()
             .put("token", token)
-            .put("intents", INTENTS)
-            .put("properties", JSONObject()
-                .put("\$os", "android")
-                .put("\$browser", "discord_wear")
-                .put("\$device", "wearos"))
+            .put(
+                "properties", JSONObject()
+                    .put("\$os", "Linux")
+                    .put("\$browser", "Chrome")
+                    .put("\$device", "WearOS")
+                    .put("\$system_locale", "en-US")
+                    .put(
+                        "\$browser_user_agent",
+                        "Mozilla/5.0 (Wayland; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.2.0.2 Firefox/156.0.1"
+                    )
+                    .put("\$browser_version", "151.2.0.2")
+                    .put("\$os_version", "")
+                    .put("\$release_channel", "stable")
+                    .put("\$client_build_number", 621195)
+            )
         send(Op.IDENTIFY, d)
     }
 
@@ -121,12 +157,19 @@ class DiscordGateway(private val token: String) {
 
                 Op.INVALID_SESSION -> {
                     val resumable = (d as? Boolean) == true
-                    if (!resumable) { sessionId = null; resumeUrl = null }
+                    if (!resumable) {
+                        sessionId = null; resumeUrl = null
+                    }
                     scope.launch { delay(2_000); connect() }
                 }
 
                 Op.DISPATCH -> {
-                    if (t != null) handleDispatch(t, d as? JSONObject)
+                    if (t != null) {
+                        if (t == "TYPING_START") {
+                            android.util.Log.d("DiscordGateway", "TYPING_START raw payload: $d")
+                        }
+                        handleDispatch(t, d as? JSONObject)
+                    }
                 }
             }
         }
@@ -172,8 +215,10 @@ class DiscordGateway(private val token: String) {
                     for (i in 0 until rsArr.length()) {
                         runCatching {
                             val rs = rsArr.getJSONObject(i)
-                            val chId = rs.optString("id").takeIf { it.isNotEmpty() } ?: return@runCatching
-                            val lastRead = rs.optString("last_message_id").takeIf { it.isNotEmpty() && it != "null" }
+                            val chId =
+                                rs.optString("id").takeIf { it.isNotEmpty() } ?: return@runCatching
+                            val lastRead = rs.optString("last_message_id")
+                                .takeIf { it.isNotEmpty() && it != "null" }
                                 ?: return@runCatching
                             val mentionCount = rs.optInt("mention_count", 0)
                             readState[chId] = ChannelUnreadState(lastRead, mentionCount)
@@ -189,6 +234,7 @@ class DiscordGateway(private val token: String) {
                 }
                 if (user != null) GatewayEvent.Ready(user, readState, presences) else null
             }
+
             "MESSAGE_CREATE" -> runCatching {
                 val msg = DiscordMessage.fromJson(d)
                 val memberObj = d.optJSONObject("member")
@@ -199,31 +245,38 @@ class DiscordGateway(private val token: String) {
                 val guildId = d.optString("guild_id").takeIf { it.isNotEmpty() && it != "null" }
                 GatewayEvent.MessageCreate(msg, roleIds, guildId)
             }.getOrNull()
+
             "MESSAGE_UPDATE" -> runCatching {
                 GatewayEvent.MessageUpdate(DiscordMessage.fromJson(d))
             }.getOrNull()
+
             "MESSAGE_DELETE" -> runCatching {
                 GatewayEvent.MessageDelete(
                     id = d.getString("id"),
                     channelId = d.getString("channel_id")
                 )
             }.getOrNull()
+
             "MESSAGE_REACTION_ADD" -> runCatching {
                 GatewayEvent.ReactionAdd(
                     messageId = d.getString("message_id"),
                     channelId = d.getString("channel_id"),
                     userId = d.getString("user_id"),
-                    emoji = ReactionEmoji.fromJson(d.getJSONObject("emoji"))
+                    emoji = ReactionEmoji.fromJson(d.getJSONObject("emoji")),
+                    burst = d.optBoolean("burst", false) || d.optInt("type", 0) == 1
                 )
             }.getOrNull()
+
             "MESSAGE_REACTION_REMOVE" -> runCatching {
                 GatewayEvent.ReactionRemove(
                     messageId = d.getString("message_id"),
                     channelId = d.getString("channel_id"),
                     userId = d.getString("user_id"),
-                    emoji = ReactionEmoji.fromJson(d.getJSONObject("emoji"))
+                    emoji = ReactionEmoji.fromJson(d.getJSONObject("emoji")),
+                    burst = d.optBoolean("burst", false) || d.optInt("type", 0) == 1
                 )
             }.getOrNull()
+
             "TYPING_START" -> runCatching {
                 fun String.realOrNull() = takeIf { it.isNotEmpty() && it != "null" }
                 val memberObj = d.optJSONObject("member")
@@ -238,9 +291,41 @@ class DiscordGateway(private val token: String) {
                     displayName = displayName
                 )
             }.getOrNull()
+
             "PRESENCE_UPDATE" -> runCatching {
                 GatewayEvent.PresenceUpdate(UserPresence.fromJson(d))
             }.getOrNull()
+
+            "CHANNEL_CREATE" -> runCatching {
+                GatewayEvent.ChannelCreate(Channel.fromJson(d))
+            }.getOrNull()
+
+            "CHANNEL_UPDATE" -> runCatching {
+                GatewayEvent.ChannelUpdate(Channel.fromJson(d))
+            }.getOrNull()
+
+            "CHANNEL_DELETE" -> runCatching {
+                val id = d.getString("id")
+                val guildId = d.optString("guild_id").takeIf { it.isNotEmpty() && it != "null" }
+                val typeCode = d.optInt("type", 0)
+                val type = ChannelType.from(typeCode)
+                val channel = Channel(
+                    id = id,
+                    type = type,
+                    guildId = guildId,
+                    name = d.optString("name"),
+                    topic = null,
+                    lastMessageId = null,
+                    parentId = null,
+                    position = 0,
+                    permissionOverwrites = emptyList(),
+                    recipients = emptyList(),
+                    hasAccess = true,
+                    slowModeSeconds = 0
+                )
+                GatewayEvent.ChannelDelete(channel)
+            }.getOrNull()
+
             else -> GatewayEvent.Unknown(eventName)
         }
 
@@ -248,21 +333,48 @@ class DiscordGateway(private val token: String) {
             scope.launch { _events.emit(event) }
         }
     }
-
-    companion object {
-        private const val INTENTS =
-            (1 or 256 or 512 or 1024 or 2048 or 4096 or 8192 or 16384 or 32768)
-    }
 }
 
 sealed class GatewayEvent {
-    data class Ready(val user: DiscordUser, val readState: Map<String, ChannelUnreadState> = emptyMap(), val presences: List<UserPresence> = emptyList()) : GatewayEvent()
-    data class MessageCreate(val message: DiscordMessage, val memberRoleIds: List<String> = emptyList(), val guildId: String? = null) : GatewayEvent()
+    data class Ready(
+        val user: DiscordUser,
+        val readState: Map<String, ChannelUnreadState> = emptyMap(),
+        val presences: List<UserPresence> = emptyList()
+    ) : GatewayEvent()
+
+    data class MessageCreate(
+        val message: DiscordMessage,
+        val memberRoleIds: List<String> = emptyList(),
+        val guildId: String? = null
+    ) : GatewayEvent()
+
     data class MessageUpdate(val message: DiscordMessage) : GatewayEvent()
     data class MessageDelete(val id: String, val channelId: String) : GatewayEvent()
-    data class ReactionAdd(val messageId: String, val channelId: String, val userId: String, val emoji: ReactionEmoji) : GatewayEvent()
-    data class ReactionRemove(val messageId: String, val channelId: String, val userId: String, val emoji: ReactionEmoji) : GatewayEvent()
-    data class TypingStart(val channelId: String, val userId: String, val displayName: String? = null) : GatewayEvent()
+    data class ReactionAdd(
+        val messageId: String,
+        val channelId: String,
+        val userId: String,
+        val emoji: ReactionEmoji,
+        val burst: Boolean = false
+    ) : GatewayEvent()
+
+    data class ReactionRemove(
+        val messageId: String,
+        val channelId: String,
+        val userId: String,
+        val emoji: ReactionEmoji,
+        val burst: Boolean = false
+    ) : GatewayEvent()
+
+    data class TypingStart(
+        val channelId: String,
+        val userId: String,
+        val displayName: String? = null
+    ) : GatewayEvent()
+
     data class PresenceUpdate(val presence: UserPresence) : GatewayEvent()
+    data class ChannelCreate(val channel: Channel) : GatewayEvent()
+    data class ChannelUpdate(val channel: Channel) : GatewayEvent()
+    data class ChannelDelete(val channel: Channel) : GatewayEvent()
     data class Unknown(val name: String) : GatewayEvent()
 }

@@ -102,10 +102,17 @@ fun ServerScreen(onNavigateToChannels: (guildId: String, guildName: String) -> U
                             pinnedIds = SetupPreferences.getPinnedServers(context)
                             menuGuild = null
                         },
-                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
                         colors = ButtonDefaults.filledTonalButtonColors()
                     ) {
-                        Icon(painter = painterResource(id = if (isPinned) R.drawable.unpin else R.drawable.pin),tint = Color.White, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(
+                            painter = painterResource(id = if (isPinned) R.drawable.unpin else R.drawable.pin),
+                            tint = Color.White,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
                         Spacer(Modifier.width(6.dp))
                         Text(if (isPinned) "Unpin" else "Pin to top")
                     }
@@ -117,10 +124,17 @@ fun ServerScreen(onNavigateToChannels: (guildId: String, guildName: String) -> U
                             hiddenIds = SetupPreferences.getHiddenServers(context)
                             menuGuild = null
                         },
-                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
                         colors = ButtonDefaults.filledTonalButtonColors()
                     ) {
-                        Icon(painter = painterResource(id = if (isHidden) R.drawable.unhide else R.drawable.hide), tint = Color.White, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(
+                            painter = painterResource(id = if (isHidden) R.drawable.unhide else R.drawable.hide),
+                            tint = Color.White,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
                         Spacer(Modifier.width(6.dp))
                         Text(if (isHidden) "Unhide" else "Hide")
                     }
@@ -128,7 +142,9 @@ fun ServerScreen(onNavigateToChannels: (guildId: String, guildName: String) -> U
                 item {
                     Button(
                         onClick = { menuGuild = null },
-                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
                         colors = ButtonDefaults.filledTonalButtonColors()
                     ) { Text("Cancel") }
                 }
@@ -152,7 +168,10 @@ fun ServerScreen(onNavigateToChannels: (guildId: String, guildName: String) -> U
                 items(serverPings.size) { index ->
                     val ping = serverPings[index]
                     PingCard(ping = ping, onClick = {
-                        onNavigateToChannels(ping.message.guildId ?: return@PingCard, ping.guildName ?: return@PingCard)
+                        onNavigateToChannels(
+                            ping.message.guildId ?: return@PingCard,
+                            ping.guildName ?: return@PingCard
+                        )
                     })
                 }
             }
@@ -181,7 +200,9 @@ fun ServerScreen(onNavigateToChannels: (guildId: String, guildName: String) -> U
                     item {
                         Button(
                             onClick = { showHidden = !showHidden },
-                            modifier = Modifier.fillMaxWidth().height(32.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(32.dp),
                             colors = ButtonDefaults.filledTonalButtonColors()
                         ) {
                             Text(
@@ -227,26 +248,37 @@ private fun ServerButton(
                 modifier = Modifier.matchParentSize()
             )
             Box(
-                modifier = Modifier.matchParentSize().background(
-                    Brush.horizontalGradient(
-                        listOf(Color.Black.copy(0.55f), Color.Black.copy(0.30f))
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color.Black.copy(0.55f), Color.Black.copy(0.30f))
+                        )
                     )
-                )
             )
         } else {
             Box(
-                modifier = Modifier.matchParentSize().background(
-                    MaterialTheme.colorScheme.surfaceContainer.copy(alpha = if (isHidden) 0.4f else 1f)
-                )
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = if (isHidden) 0.4f else 1f)
+                    )
             )
         }
 
         Row(
-            modifier = Modifier.matchParentSize().padding(horizontal = 12.dp),
+            modifier = Modifier
+                .matchParentSize()
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (isPinned) Icon(painter = painterResource(id = R.drawable.pin),tint = Color.White, contentDescription = "Pinned", modifier = Modifier.size(10.dp))
+            if (isPinned) Icon(
+                painter = painterResource(id = R.drawable.pin),
+                tint = Color.White,
+                contentDescription = "Pinned",
+                modifier = Modifier.size(10.dp)
+            )
 
             if (iconUrl != null && !isHidden) {
                 AsyncImage(
@@ -254,14 +286,18 @@ private fun ServerButton(
                     imageLoader = imageLoader,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(32.dp).clip(CircleShape)
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
                 )
             } else {
                 Box(
-                    modifier = Modifier.size(32.dp).background(
-                        if (isHidden) Color(0xFF5865F2).copy(alpha = 0.4f) else Color(0xFF5865F2),
-                        CircleShape
-                    ),
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(
+                            if (isHidden) Color(0xFF5865F2).copy(alpha = 0.4f) else Color(0xFF5865F2),
+                            CircleShape
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -287,7 +323,6 @@ private fun ServerButton(
             )
         }
 
-        // Red mention badge — top-right corner of the button
         if (mentionCount > 0 && !isHidden) {
             Box(
                 modifier = Modifier

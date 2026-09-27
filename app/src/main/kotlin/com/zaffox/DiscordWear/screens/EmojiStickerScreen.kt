@@ -15,7 +15,6 @@ import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.*
 import coil.ImageLoader
 import coil.compose.AsyncImage
-import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import coil.request.ImageRequest
 import com.zaffox.discordwear.api.GuildEmoji
@@ -31,7 +30,6 @@ private val COMMON_UNICODE_EMOJI = listOf(
     "😭", "😍", "🤔", "💪", "🤣", "😎", "🥹", "🫶"
 )
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun EmojiStickerScreen(
     tab: Int,
@@ -51,10 +49,7 @@ fun EmojiStickerScreen(
     val imageLoader = remember {
         ImageLoader.Builder(context)
             .components {
-                if (android.os.Build.VERSION.SDK_INT >= 28)
-                    add(ImageDecoderDecoder.Factory())
-                else
-                    add(GifDecoder.Factory())
+                add(ImageDecoderDecoder.Factory())
             }.build()
     }
 
@@ -95,7 +90,10 @@ fun EmojiStickerScreen(
                     items(unicodeRows.size) { rowIdx ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            horizontalArrangement = Arrangement.spacedBy(
+                                4.dp,
+                                Alignment.CenterHorizontally
+                            )
                         ) {
                             unicodeRows[rowIdx].forEach { emoji ->
                                 Text(
@@ -116,7 +114,9 @@ fun EmojiStickerScreen(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp)
                             )
                         }
                     }
@@ -131,11 +131,14 @@ fun EmojiStickerScreen(
                         )
                     }
                 } else if (emojis.isNotEmpty()) {
-                    val rows = emojis.chunked(4)
+                    val rows = emojis.chunked(5)
                     items(rows.size) { rowIdx ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(
+                                4.dp,
+                                Alignment.CenterHorizontally
+                            )
                         ) {
                             rows[rowIdx].forEach { emoji ->
                                 val isAnimated = emoji.animated
@@ -150,9 +153,9 @@ fun EmojiStickerScreen(
                                         contentScale = ContentScale.Fit,
                                         modifier = Modifier
                                             .size(32.dp)
-                                            .clickable { 
+                                            .clickable {
                                                 if (!isLocked) {
-                                                    onEmojiPicked(emoji.insertText) 
+                                                    onEmojiPicked(emoji.insertText)
                                                 }
                                             }
                                     )
@@ -189,7 +192,10 @@ fun EmojiStickerScreen(
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(
+                                8.dp,
+                                Alignment.CenterHorizontally
+                            )
                         ) {
                             rows[rowIdx].forEach { sticker ->
                                 AsyncImage(

@@ -2,7 +2,7 @@ package com.zaffox.discordwear
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import android.os.Environment
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
@@ -30,19 +30,19 @@ object ApkInstaller {
         onProgress: (Float) -> Unit = {}
     ): Result<File> = withContext(Dispatchers.IO) {
         runCatching {
-            val dir  = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
                 ?: context.filesDir
             val file = File(dir, "DiscordWear-update.apk")
 
             val request = Request.Builder().url(url).build()
             http.newCall(request).execute().use { resp ->
                 if (!resp.isSuccessful) error("HTTP ${resp.code}")
-                val body          = resp.body ?: error("Empty body")
+                val body = resp.body ?: error("Empty body")
                 val contentLength = body.contentLength()   // -1 if unknown
 
                 body.source().use { source ->
                     file.outputStream().use { out ->
-                        val buffer    = ByteArray(8 * 1024)
+                        val buffer = ByteArray(8 * 1024)
                         var totalRead = 0L
                         while (true) {
                             val read = source.read(buffer)
@@ -78,7 +78,7 @@ object ApkInstaller {
     /** Opens the release HTML page in the phone's browser via RemoteIntent. */
     fun openInPhoneBrowser(context: Context, url: String) {
         runCatching {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            val intent = Intent(Intent.ACTION_VIEW, url.toUri()).apply {
                 addCategory(Intent.CATEGORY_BROWSABLE)
             }
             val remoteIntentClass = runCatching {

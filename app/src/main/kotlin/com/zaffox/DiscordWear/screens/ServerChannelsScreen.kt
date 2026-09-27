@@ -19,7 +19,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import com.zaffox.discordwear.R
 import com.zaffox.discordwear.SetupPreferences
-import com.zaffox.discordwear.api.CategoryGroup
 import com.zaffox.discordwear.api.Channel
 import com.zaffox.discordwear.api.ChannelType
 import com.zaffox.discordwear.discordApp
@@ -28,11 +27,36 @@ import kotlinx.coroutines.launch
 @Composable
 private fun ChannelIcon(ch: Channel, allChannels: List<Channel>) {
     when {
+        !ch.hasAccess ->
+            Icon(
+                painter = painterResource(id = R.drawable.lock),
+                contentDescription = "Locked",
+                tint = Color.White.copy(alpha = 0.5f),
+                modifier = Modifier.size(16.dp)
+            )
+
         ch.type == ChannelType.GUILD_NEWS ->
-            Icon(painter = painterResource(id = R.drawable.announce), contentDescription = "Announcement",tint = Color.White, modifier = Modifier.size(16.dp))
+            Icon(
+                painter = painterResource(id = R.drawable.announce),
+                contentDescription = "Announcement",
+                tint = Color.White,
+                modifier = Modifier.size(16.dp)
+            )
+
         ch.name.contains("rule", ignoreCase = true) &&
-            allChannels.firstOrNull { it.name.contains("rule", ignoreCase = true) }?.id == ch.id ->
-            Icon(painter = painterResource(id = R.drawable.rules), contentDescription = "Rules",tint = Color.White, modifier = Modifier.size(16.dp))
+                allChannels.firstOrNull {
+                    it.name.contains(
+                        "rule",
+                        ignoreCase = true
+                    )
+                }?.id == ch.id ->
+            Icon(
+                painter = painterResource(id = R.drawable.rules),
+                contentDescription = "Rules",
+                tint = Color.White,
+                modifier = Modifier.size(16.dp)
+            )
+
         else ->
             Text("#", fontSize = 16.sp)
     }
@@ -48,38 +72,52 @@ fun ServerChannels(
     val repo = context.discordApp.repository
     val listState = rememberScalingLazyListState()
     val scope = rememberCoroutineScope()
-    val hideInaccessible = remember { SetupPreferences.getHideInaccessibleChannels(context) }
+    var hideInaccessible by remember {
+        mutableStateOf(
+            SetupPreferences.getHideInaccessibleChannels(
+                context
+            )
+        )
+    }
     val showMentionBadges = remember { SetupPreferences.getShowMentionBadges(context) }
     val readState by (repo?.readState ?: return).collectAsState()
+    val guildChannelsMap by repo.guildChannelsMap.collectAsState()
 
-    var groups by remember { mutableStateOf<List<CategoryGroup>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
+    val groups = guildChannelsMap[guildId] ?: remember {
+        repo.getCachedChannels(
+            guildId,
+            filterInaccessible = hideInaccessible
+        )
+    } ?: emptyList()
+    var loading by remember { mutableStateOf(groups.isEmpty()) }
     var error by remember { mutableStateOf("") }
 
     LaunchedEffect(guildId) {
+        hideInaccessible = SetupPreferences.getHideInaccessibleChannels(context)
         scope.launch {
-            // Check for cached channels first
-            val cached = repo?.getCachedChannels(guildId, filterInaccessible = hideInaccessible)
-            
-            if (!cached.isNullOrEmpty()) {
-                groups = cached
-                loading = false
-                repo?.cacheChannelNames(cached)
-                return@launch  // Already have cached data, skip network call
+            if (groups.isEmpty()) {
+                val cached = repo?.getCachedChannels(guildId, filterInaccessible = hideInaccessible)
+                if (!cached.isNullOrEmpty()) {
+                    repo?.cacheChannelNames(cached)
+                }
             }
-            
-            // No cache or cache is empty — fetch from network
-            repo?.rest?.getGuildChannels(guildId, filterInaccessible = hideInaccessible)
+            repo?.refreshGuildChannels(guildId, filterInaccessible = hideInaccessible)
                 ?.onSuccess {
-                    groups = it
                     loading = false
-                    repo.cacheChannelNames(it)
-                    repo.saveChannels(guildId, it)
                 }
                 ?.onFailure {
-                    if (groups.isEmpty()) { error = it.message ?: "Error"; loading = false }
+                    if (groups.isEmpty()) {
+                        error = it.message ?: "Error"
+                        loading = false
+                    }
                 }
-                ?: run { if (groups.isEmpty()) { error = "Not connected"; loading = false } }
+                ?: run {
+                    if (groups.isEmpty()) {
+                        error = "Not connected"
+                        loading = false
+                    }
+                }
+            loading = false
         }
     }
 
@@ -94,12 +132,16 @@ fun ServerChannels(
             when {
                 loading -> item { CircularProgressIndicator() }
                 error.isNotEmpty() -> item {
-                    Text(error, color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        error, color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
+
                 groups.isEmpty() -> item {
                     Text("No text channels.", style = MaterialTheme.typography.bodySmall)
                 }
+
                 else -> {
                     for (group in groups) {
                         if (group.category != null) {
@@ -112,7 +154,8 @@ fun ServerChannels(
                                         letterSpacing = 1.sp
                                     ),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier
+                                        .fillMaxWidth()
                                         .padding(top = 8.dp, bottom = 2.dp)
                                 )
                             }
@@ -120,13 +163,15 @@ fun ServerChannels(
 
                         items(group.channels.size) { idx ->
                             val ch = group.channels[idx]
-                            if (!ch.hasAccess) return@items
+                            if (!ch.hasAccess && hideInaccessible) return@items
                             val rs = if (showMentionBadges) readState[ch.id] else null
                             val mentionCount = rs?.mentionCount ?: 0
                             val hasUnread = rs != null && ch.lastMessageId != null &&
-                                ch.lastMessageId > rs.lastMessageId
+                                    ch.lastMessageId > rs.lastMessageId
                             Button(
-                                modifier = Modifier.fillMaxWidth().height(36.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(36.dp),
                                 colors = ButtonDefaults.filledTonalButtonColors(),
                                 onClick = { onNavigateToChatScreen(ch.id, ch.name) }
                             ) {
@@ -145,6 +190,9 @@ fun ServerChannels(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                             text = ch.name,
+                                            color = if (ch.hasAccess) Color.White else Color.White.copy(
+                                                alpha = 0.5f
+                                            ),
                                             modifier = Modifier.weight(1f)
                                         )
                                     }
@@ -167,7 +215,10 @@ fun ServerChannels(
                                         Box(
                                             modifier = Modifier
                                                 .size(7.dp)
-                                                .background(Color.White.copy(alpha = 0.8f), CircleShape)
+                                                .background(
+                                                    Color.White.copy(alpha = 0.8f),
+                                                    CircleShape
+                                                )
                                         )
                                     }
                                 }
