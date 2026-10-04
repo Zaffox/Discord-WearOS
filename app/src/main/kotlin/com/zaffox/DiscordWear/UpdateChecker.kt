@@ -31,7 +31,7 @@ object UpdateChecker {
     private const val GITHUB_REPO = "Discord-WearOS"
     private const val API_URL =
         "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
-    const val CURRENT_VERSION = "2.0"
+    const val CURRENT_VERSION = "2.1"
     private const val PREFS_NAME = "update_checker"
     private const val KEY_LAST_CHECK = "last_check_ms"
     private const val KEY_LATEST_TAG = "latest_tag"

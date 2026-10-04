@@ -3,7 +3,6 @@ package com.zaffox.discordwear
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.TimeText
@@ -12,6 +11,7 @@ import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import com.zaffox.discordwear.screens.*
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +33,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.ButtonDefaults
+import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.Text
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -55,6 +59,19 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 val updateState by UpdateChecker.state.collectAsState()
                 var dismissUpdate by remember { mutableStateOf(false) }
+
+                val repo = discordApp.repository
+                val isTokenInvalid by repo?.isTokenInvalid?.collectAsState()
+                    ?: remember { mutableStateOf(false) }
+                var showInvalidTokenPopup by remember { mutableStateOf(false) }
+
+                androidx.compose.runtime.LaunchedEffect(isTokenInvalid) {
+                    if (isTokenInvalid) {
+                        SetupPreferences.clearToken(this@MainActivity)
+                        discordApp.clearRepository()
+                        showInvalidTokenPopup = true
+                    }
+                }
 
                 AppScaffold(timeText = { TimeText() }) {
                     val navController = rememberSwipeDismissableNavController()
@@ -130,7 +147,8 @@ class MainActivity : ComponentActivity() {
                                     val encodedName =
                                         java.net.URLEncoder.encode(threadName, "UTF-8")
                                     navController.navigate("thread/$threadId/$encodedName/${guildIdArg ?: "dm"}")
-                                }
+                                },
+                                onBack = { navController.popBackStack() }
                             )
                         }
 
@@ -193,6 +211,66 @@ class MainActivity : ComponentActivity() {
                             ServerScreen(onNavigateToChannels = { gId, gName ->
                                 navController.navigate("ServerChannels/$gId/$gName")
                             })
+                        }
+                    }
+
+                    if (showInvalidTokenPopup) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ScreenScaffold(scrollState = rememberScalingLazyListState()) {
+                                ScalingLazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    item {
+                                        Text(
+                                            "Invalid Token",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = MaterialTheme.colorScheme.error,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 8.dp)
+                                        )
+                                    }
+                                    item {
+                                        Spacer(Modifier.height(4.dp))
+                                    }
+                                    item {
+                                        Text(
+                                            "Token is invalid or has expired. \n You have been logged out.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp)
+                                        )
+                                    }
+                                    item {
+                                        Spacer(Modifier.height(8.dp))
+                                    }
+                                    item {
+                                        Button(
+                                            onClick = {
+                                                showInvalidTokenPopup = false
+                                                navController.navigate("Welcome") {
+                                                    popUpTo(0) { inclusive = true }
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth(0.85f)
+                                                .height(36.dp),
+                                            colors = ButtonDefaults.filledTonalButtonColors()
+                                        ) {
+                                            Text("OK")
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 

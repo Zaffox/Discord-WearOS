@@ -177,15 +177,22 @@ class DiscordGateway(private val token: String) {
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             connected = false
             heartbeatJob?.cancel()
-            scope.launch {
-                delay(5_000)
-                connect()
+            if (response?.code == 401) {
+                scope.launch { _events.emit(GatewayEvent.InvalidToken) }
+            } else {
+                scope.launch {
+                    delay(5_000)
+                    connect()
+                }
             }
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             connected = false
             heartbeatJob?.cancel()
+            if (code == 4004) {
+                scope.launch { _events.emit(GatewayEvent.InvalidToken) }
+            }
         }
     }
 
@@ -376,5 +383,6 @@ sealed class GatewayEvent {
     data class ChannelCreate(val channel: Channel) : GatewayEvent()
     data class ChannelUpdate(val channel: Channel) : GatewayEvent()
     data class ChannelDelete(val channel: Channel) : GatewayEvent()
+    object InvalidToken : GatewayEvent()
     data class Unknown(val name: String) : GatewayEvent()
 }

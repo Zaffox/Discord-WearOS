@@ -24,6 +24,7 @@ import androidx.wear.input.RemoteInputIntentHelper
 import androidx.wear.input.wearableExtender
 import com.zaffox.discordwear.SetupPreferences
 import com.zaffox.discordwear.TokenWebServer
+import com.zaffox.discordwear.api.DiscordRestClient
 import com.zaffox.discordwear.discordApp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -93,9 +94,17 @@ fun WelcomeScreen(onSetupComplete: () -> Unit, onNavigateToQrLogin: () -> Unit) 
         val token = bundle?.getCharSequence(INPUT_KEY)?.toString()?.trim()
         if (!token.isNullOrBlank()) {
             scope.launch {
-                SetupPreferences.saveToken(context, token)
-                context.discordApp.initRepository(token)
-                onSetupComplete()
+                error = ""
+                serverStatus = "Validating token…"
+                val check = DiscordRestClient(token).getCurrentUser()
+                if (check.isSuccess) {
+                    SetupPreferences.saveToken(context, token)
+                    context.discordApp.initRepository(token)
+                    onSetupComplete()
+                } else {
+                    error = "Invalid token"
+                    serverStatus = ""
+                }
             }
         }
     }
@@ -115,15 +124,22 @@ fun WelcomeScreen(onSetupComplete: () -> Unit, onNavigateToQrLogin: () -> Unit) 
     fun startWebServer() {
         acquireWifiLock()
         val srv = TokenWebServer(port = 8080) { token ->
-            SetupPreferences.saveToken(context, token)
-            context.discordApp.initRepository(token)
             scope.launch {
-                serverStatus = "Token received!"
-                delay(500)
-                webServer?.stop()
-                webServer = null
-                releaseWifiLock()
-                onSetupComplete()
+                serverStatus = "Validating token…"
+                val check = DiscordRestClient(token).getCurrentUser()
+                if (check.isSuccess) {
+                    SetupPreferences.saveToken(context, token)
+                    context.discordApp.initRepository(token)
+                    serverStatus = "Token verified!"
+                    delay(500)
+                    webServer?.stop()
+                    webServer = null
+                    releaseWifiLock()
+                    onSetupComplete()
+                } else {
+                    error = "Invalid token received from browser"
+                    serverStatus = "Server running"
+                }
             }
         }
         srv.start()
@@ -192,9 +208,17 @@ fun WelcomeScreen(onSetupComplete: () -> Unit, onNavigateToQrLogin: () -> Unit) 
                         } else null
                         if (!pastedText.isNullOrBlank()) {
                             scope.launch {
-                                SetupPreferences.saveToken(context, pastedText)
-                                context.discordApp.initRepository(pastedText)
-                                onSetupComplete()
+                                error = ""
+                                serverStatus = "Validating token…"
+                                val check = DiscordRestClient(pastedText).getCurrentUser()
+                                if (check.isSuccess) {
+                                    SetupPreferences.saveToken(context, pastedText)
+                                    context.discordApp.initRepository(pastedText)
+                                    onSetupComplete()
+                                } else {
+                                    error = "Invalid token"
+                                    serverStatus = ""
+                                }
                             }
                         } else {
                             error = "Clipboard is empty"

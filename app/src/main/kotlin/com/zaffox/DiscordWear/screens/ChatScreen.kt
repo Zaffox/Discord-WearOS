@@ -38,7 +38,7 @@ import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
@@ -82,7 +82,8 @@ fun ChatScreen(
     guildId: String? = null,
     currentUserId: String = "",
     onNavigateToProfile: ((userId: String, user: DiscordUser?) -> Unit)? = null,
-    onNavigateToThread: ((threadId: String, threadName: String) -> Unit)? = null
+    onNavigateToThread: ((threadId: String, threadName: String) -> Unit)? = null,
+    onBack: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val repo = context.discordApp.repository
@@ -336,6 +337,15 @@ fun ChatScreen(
     }
     BackHandler(enabled = showPhotoPicker) {
         showPhotoPicker = false
+    }
+    BackHandler(enabled = replyingTo != null) {
+        replyingTo = null
+    }
+    BackHandler(enabled = selectedMsg != null) {
+        selectedMsg = null
+    }
+    BackHandler(enabled = !showPicker && editingMsg == null && !isRecording && !showPhotoPicker && replyingTo == null && selectedMsg == null) {
+        onBack()
     }
 
     if (showPhotoPicker) {
@@ -1319,47 +1329,60 @@ internal fun MessageBubble(
 
     val swipeModifier = if (onSwipeToReply != null) {
         Modifier.pointerInput(msg.id) {
-            detectHorizontalDragGestures(
-                onDragStart = {
-                    isDragging = true
-                    dragOffset = 0f
-                    hasVibrated = false
-                },
-                onDragEnd = {
-                    if (dragOffset <= thresholdPx) {
-                        onSwipeToReply(msg)
-                    }
-                    val startVal = dragOffset
-                    isDragging = false
-                    scope.launch {
-                        animOffset.snapTo(startVal)
-                        animOffset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
-                    }
-                },
-                onDragCancel = {
-                    val startVal = dragOffset
-                    isDragging = false
-                    scope.launch {
-                        animOffset.snapTo(startVal)
-                        animOffset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
-                    }
-                },
-                onHorizontalDrag = { change, dragAmount ->
-                    if (dragAmount < 0f || dragOffset < 0f) {
-                        val newOffset = (dragOffset + dragAmount).coerceIn(maxDragPx, 0f)
-                        if (newOffset != dragOffset) {
-                            change.consume()
-                            if (dragOffset > thresholdPx && newOffset <= thresholdPx && !hasVibrated) {
-                                if (!view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                }
-                                hasVibrated = true
+            awaitPointerEventScope {
+                while (true) {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var dragOffsetPx = 0f
+                    var isSwipeLeft = false
+                    val pointerId = down.id
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val dragChange = event.changes.firstOrNull { it.id == pointerId } ?: break
+                        if (!dragChange.pressed) break
+
+                        val dx = dragChange.position.x - dragChange.previousPosition.x
+                        val totalDx = dragChange.position.x - down.position.x
+
+                        if (!isSwipeLeft) {
+                            if (totalDx < -viewConfiguration.touchSlop) {
+                                isSwipeLeft = true
+                                isDragging = true
+                                hasVibrated = false
+                            } else if (totalDx > viewConfiguration.touchSlop) {
+                                break
                             }
-                            dragOffset = newOffset
+                        }
+
+                        if (isSwipeLeft) {
+                            dragChange.consume()
+                            val newOffset = (dragOffsetPx + dx).coerceIn(maxDragPx, 0f)
+                            if (newOffset != dragOffsetPx) {
+                                if (dragOffsetPx > thresholdPx && newOffset <= thresholdPx && !hasVibrated) {
+                                    if (!view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    }
+                                    hasVibrated = true
+                                }
+                                dragOffsetPx = newOffset
+                                dragOffset = dragOffsetPx
+                            }
+                        }
+                    }
+
+                    if (isSwipeLeft) {
+                        if (dragOffsetPx <= thresholdPx) {
+                            onSwipeToReply(msg)
+                        }
+                        val startVal = dragOffsetPx
+                        isDragging = false
+                        scope.launch {
+                            animOffset.snapTo(startVal)
+                            animOffset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
                         }
                     }
                 }
-            )
+            }
         }
     } else Modifier
 

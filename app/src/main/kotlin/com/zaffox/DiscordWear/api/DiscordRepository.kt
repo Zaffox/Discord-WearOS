@@ -28,6 +28,15 @@ class DiscordRepository(token: String, private val context: Context? = null) {
     private val _currentUser = MutableStateFlow<DiscordUser?>(null)
     val currentUser: StateFlow<DiscordUser?> = _currentUser.asStateFlow()
 
+    private val _isTokenInvalid = MutableStateFlow(false)
+    val isTokenInvalid: StateFlow<Boolean> = _isTokenInvalid.asStateFlow()
+
+    fun handleApiError(e: Throwable) {
+        if (e is DiscordApiException && e.httpCode == 401) {
+            _isTokenInvalid.value = true
+        }
+    }
+
     @Volatile
     private var currentUserId: String? = null
 
@@ -57,7 +66,7 @@ class DiscordRepository(token: String, private val context: Context? = null) {
             cacheChannelNames(groups)
             saveChannels(guildId, groups)
             _guildChannelsMap.update { current -> current + (guildId to groups) }
-        }
+        }.onFailure { handleApiError(it) }
     }
 
     private val _messages = MutableStateFlow<Map<String, List<DiscordMessage>>>(emptyMap())
@@ -199,14 +208,14 @@ class DiscordRepository(token: String, private val context: Context? = null) {
         rest.getCurrentUser().onSuccess {
             _currentUser.value = it
             currentUserId = it.id
-        }
+        }.onFailure { handleApiError(it) }
     }
 
     suspend fun refreshGuilds() {
         rest.getGuilds().onSuccess { list ->
             _guilds.value = list
             saveGuilds(list)
-        }
+        }.onFailure { handleApiError(it) }
     }
 
     suspend fun refreshDmChannels() {
@@ -218,7 +227,7 @@ class DiscordRepository(token: String, private val context: Context? = null) {
             }
             _channelNames.value = channelNameCache.toMap()
             saveDmChannels(list)
-        }
+        }.onFailure { handleApiError(it) }
     }
 
     fun cacheChannelNames(groups: List<CategoryGroup>) {
@@ -379,7 +388,7 @@ class DiscordRepository(token: String, private val context: Context? = null) {
                 current + (channelId to (fetchedList + newOnly))
             }
             loadedChannels.add(channelId)
-        }
+        }.onFailure { handleApiError(it) }
     }
 
     fun getDisplayName(userId: String): String? = userDisplayNames[userId]
@@ -493,7 +502,7 @@ class DiscordRepository(token: String, private val context: Context? = null) {
     }
 
     suspend fun fetchUserProfile(userId: String): Result<DiscordUser> =
-        rest.getUserProfile(userId)
+        rest.getUserProfile(userId).onFailure { handleApiError(it) }
 
     suspend fun toggleReaction(
         channelId: String,
@@ -601,6 +610,10 @@ class DiscordRepository(token: String, private val context: Context? = null) {
         scope.launch {
             gateway.events.collect { event ->
                 when (event) {
+                    is GatewayEvent.InvalidToken -> {
+                        _isTokenInvalid.value = true
+                    }
+
                     is GatewayEvent.Ready -> {
                         _currentUser.value = event.user
                         currentUserId = event.user.id

@@ -49,6 +49,12 @@ import kotlinx.coroutines.delay
  *
  * Navigation: push "thread/{threadId}/{threadName}" onto the nav stack.
  */
+private fun buildEmojiLink(insertText: String): String {
+    val animated = Regex("""<a:(\w+):(\d+)>""").find(insertText) ?: return insertText
+    val id = animated.groupValues[2]
+    return "https://cdn.discordapp.com/emojis/$id.webp?size=80"
+}
+
 @Composable
 fun ThreadScreen(
     threadId: String,
@@ -374,7 +380,16 @@ fun ThreadScreen(
         return
     }
 
-    ScreenScaffold(scrollState = listState) {
+    val isAtBottom by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 5
+            info.totalItemsCount <= 5 || lastVisible >= info.totalItemsCount - 6
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        ScreenScaffold(scrollState = listState) {
         ScalingLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
             item(key = "thread_title") {
                 Row(verticalAlignment = Alignment.CenterVertically,
@@ -651,13 +666,27 @@ fun ThreadScreen(
                 }
             }
         }
+
+        if (!isAtBottom) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 10.dp),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                FilledIconButton(
+                    onClick = { scope.launch { listState.animateScrollToItem(Int.MAX_VALUE) } },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.down),
+                        contentDescription = "Scroll to bottom"
+                    )
+                }
+            }
+        }
     }
 }
-
-private fun buildEmojiLink(insertText: String): String {
-    val animated = Regex("""<a:(\w+):(\d+)>""").find(insertText) ?: return insertText
-    val id = animated.groupValues[2]
-    return "https://cdn.discordapp.com/emojis/$id.webp?size=80"
 }
 
 

@@ -26,13 +26,16 @@ import com.zaffox.discordwear.RemoteAuthClient
 import com.zaffox.discordwear.RemoteAuthState
 import com.zaffox.discordwear.RemoteAuthStatus
 import com.zaffox.discordwear.SetupPreferences
+import com.zaffox.discordwear.api.DiscordRestClient
 import com.zaffox.discordwear.discordApp
+import kotlinx.coroutines.launch
 
 @Composable
 fun QrLoginScreen(onSetupComplete: () -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     val listState = rememberScalingLazyListState()
 
+    val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf<RemoteAuthState>(RemoteAuthState.Connecting) }
     var status by remember { mutableStateOf(RemoteAuthStatus()) }
     var client by remember { mutableStateOf<RemoteAuthClient?>(null) }
@@ -42,9 +45,17 @@ fun QrLoginScreen(onSetupComplete: () -> Unit, onBack: () -> Unit) {
             onStateChange = { newState -> state = newState },
             onStatusUpdate = { newStatus -> status = newStatus },
             onTokenReceived = { token ->
-                SetupPreferences.saveToken(context, token)
-                context.discordApp.initRepository(token)
-                onSetupComplete()
+                scope.launch {
+                    state = RemoteAuthState.Connecting
+                    val check = DiscordRestClient(token).getCurrentUser()
+                    if (check.isSuccess) {
+                        SetupPreferences.saveToken(context, token)
+                        context.discordApp.initRepository(token)
+                        onSetupComplete()
+                    } else {
+                        state = RemoteAuthState.Error("Invalid token received")
+                    }
+                }
             }
         )
         client = c
