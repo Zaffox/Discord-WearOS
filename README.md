@@ -1,4 +1,6 @@
-Some updates should be comming soon, working on threads and other minor changes :3 
+Please be careful when uploading media, I got a spam account limited when doing it. if your account is less than a month old BE CAREFUL, YOU MAY BE PERMANENTLY BANNED BECAUSE THEY MAY THINK ITS A SPAM ACCOUNT, older accounts will get a warning AFAIK. 
+
+I'll try to add some fixes for this, but stil, be careful, and it's better to just read messages for now
 
 # Discord-wear
 Discord For WearOS
